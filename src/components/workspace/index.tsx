@@ -10,7 +10,7 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, RotateCcw, Save, RefreshCw } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type WorkspaceView = 'code' | 'preview';
@@ -21,7 +21,7 @@ interface WorkspaceProps {
 
 export function Workspace({ projectId }: WorkspaceProps) {
   const [webcontainer, setWebcontainer] = useState<WebContainer | null>(null);
-  const [files, setFiles] = useState<Record<string, any>>({});
+  const [files, setFiles] = useState<Record<string, { type: 'file' | 'folder' }>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -33,8 +33,8 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
 
   // Helper function definitions - moved to top
-  const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, any>> => {
-    const files: Record<string, any> = {};
+  const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, { type: 'file' | 'folder' }>> => {
+    const files: Record<string, { type: 'file' | 'folder' }> = {};
     
     async function processDirectory(path: string) {
       try {
@@ -114,8 +114,8 @@ export function Workspace({ projectId }: WorkspaceProps) {
     }
   }, [webcontainer, refreshFileTree, projectId]);
 
-  const handleFileSystemChange = useCallback(async (event: any) => {
-    const { container } = event.detail;
+  const handleFileSystemChange = useCallback(async (event: Event) => {
+    const { container } = (event as CustomEvent).detail;
     if (container) {
       await refreshFileTree(container);
       // Auto-save project state
@@ -253,7 +253,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
         WebContainerManager.saveProjectState(projectId).catch(console.error);
       }
     };
-  }, [selectedFile]); // Only depend on selectedFile
+  }, [selectedFile, hasUnsavedChanges, webcontainer, projectId, fileContent]);
 
   if (isLoading) {
     return (

@@ -52,9 +52,7 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
           highlightActiveBracketPair: true,
           indentation: true,
         },
-        suggest: {
-          enabled: true,
-        },
+        // Autocomplete is enabled by default in Monaco
         quickSuggestions: {
           other: true,
           comments: true,
@@ -76,14 +74,13 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
         formatOnPaste: true,
         formatOnType: true,
         matchBrackets: 'always',
-        occurrencesHighlight: true,
+        occurrencesHighlight: 'singleFile',
         overviewRulerBorder: false,
         overviewRulerLanes: 3,
         padding: { top: 12, bottom: 12 },
         parameterHints: { enabled: true },
         quickSuggestionsDelay: 10,
         renderControlCharacters: false,
-        renderIndentGuides: true,
         renderValidationDecorations: 'on',
         renderWhitespace: 'none',
         scrollbar: {

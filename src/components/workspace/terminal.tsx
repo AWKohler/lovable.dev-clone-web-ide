@@ -25,7 +25,7 @@ export function Terminal({ webcontainer }: TerminalProps) {
         background: '#0f172a', // slate-900
         foreground: '#e2e8f0', // slate-200
         cursor: '#3b82f6', // blue-500
-        selection: '#1e40af40', // blue-700 with opacity
+        selectionBackground: '#1e40af40', // blue-700 with opacity
       },
       fontSize: 14,
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { WebContainer } from '@webcontainer/api';
 import { TerminalDynamic } from './terminal-dynamic';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ const MAX_TERMINALS = 3;
 export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
   const [activeTerminal, setActiveTerminal] = useState(0);
   const [terminalCount, setTerminalCount] = useState(1);
-  const terminalRefs = useRef<Array<any>>([]);
+  // Note: terminalRefs not currently used but kept for future functionality
 
   const addTerminal = useCallback(() => {
     if (terminalCount < MAX_TERMINALS) {

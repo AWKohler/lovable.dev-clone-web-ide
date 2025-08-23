@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   RefreshCw, 
@@ -9,8 +9,7 @@ import {
   Smartphone, 
   Tablet, 
   RotateCcw, 
-  ChevronDown,
-  Maximize
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PreviewInfo } from '@/lib/preview-store';
@@ -45,6 +44,14 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
 
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
+      // Check if running on localhost (development)
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      if (isLocalhost) {
+        alert('New tab preview functionality requires HTTPS.\n\nFor development testing:\n1. Run "ngrok http 3000" in terminal\n2. Access the app via the ngrok HTTPS URL\n\nOr deploy to a production HTTPS domain.');
+        return;
+      }
+
       // Extract the preview ID from the WebContainer URL
       const match = activePreview.baseUrl.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
       
@@ -52,11 +59,11 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
         // Open directly to the WebContainer URL with current path
         const fullUrl = currentPath === '/' ? activePreview.baseUrl : activePreview.baseUrl + currentPath;
         
-        // Create a new window with specific parameters to avoid the editor connection issue
+        // Create a new window - WebContainer will handle the connection automatically
         const newWindow = window.open(
           fullUrl,
           '_blank',
-          'menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes,width=1280,height=720'
+          'menubar=no,toolbar=yes,location=yes,status=no,scrollbars=yes,resizable=yes,width=1280,height=720'
         );
         
         if (newWindow) {
@@ -105,7 +112,6 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
     };
   }, [selectedDevice, isLandscape]);
 
-  const DeviceIcon = DEVICE_SIZES[selectedDevice].icon;
 
   if (!activePreview) {
     return (
@@ -258,7 +264,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
         >
           <iframe
             ref={iframeRef}
-            src={iframeUrl}
+            src={iframeUrl || undefined}
             className="w-full h-full border-none"
             title="Preview"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"

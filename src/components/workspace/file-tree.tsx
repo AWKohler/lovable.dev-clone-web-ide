@@ -1,11 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import type { JSX } from 'react';
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface FileNode {
+  type: 'file' | 'folder';
+  [key: string]: unknown;
+}
+
 interface FileTreeProps {
-  files: Record<string, any>;
+  files: Record<string, FileNode>;
   selectedFile: string | null;
   onFileSelect: (filePath: string) => void;
 }

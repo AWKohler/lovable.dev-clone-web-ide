@@ -58,7 +58,7 @@ export class WebContainerManager {
     }
   }
 
-  static async loadProjectState(projectId: string): Promise<Record<string, any> | null> {
+  static async loadProjectState(projectId: string): Promise<Record<string, unknown> | null> {
     try {
       const saved = localStorage.getItem(`webcontainer-${projectId}`);
       return saved ? JSON.parse(saved) : null;
@@ -68,8 +68,8 @@ export class WebContainerManager {
     }
   }
 
-  private static async getAllFiles(container: WebContainer): Promise<Record<string, any>> {
-    const files: Record<string, any> = {};
+  private static async getAllFiles(container: WebContainer): Promise<Record<string, unknown>> {
+    const files: Record<string, unknown> = {};
     
     async function processDirectory(path: string) {
       try {
@@ -103,7 +103,7 @@ export class WebContainerManager {
     return files;
   }
 
-  static async restoreFiles(container: WebContainer, files: Record<string, any>): Promise<void> {
+  static async restoreFiles(container: WebContainer, files: Record<string, unknown>): Promise<void> {
     // Clear existing files first (except node_modules)
     try {
       const entries = await container.fs.readdir('/', { withFileTypes: true });
@@ -122,13 +122,13 @@ export class WebContainerManager {
     for (const filePath of sortedPaths) {
       const fileData = files[filePath];
       
-      if (fileData.type === 'folder') {
+      if ((fileData as { type: string }).type === 'folder') {
         try {
           await container.fs.mkdir(filePath, { recursive: true });
         } catch (error) {
           console.warn(`Failed to create directory ${filePath}:`, error);
         }
-      } else if (fileData.type === 'file' && fileData.content !== undefined) {
+      } else if ((fileData as { type: string; content?: string }).type === 'file' && (fileData as { content?: string }).content !== undefined) {
         try {
           // Ensure parent directory exists
           const parentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
@@ -136,7 +136,7 @@ export class WebContainerManager {
             await container.fs.mkdir(parentDir, { recursive: true });
           }
           
-          await container.fs.writeFile(filePath, fileData.content);
+          await container.fs.writeFile(filePath, (fileData as { content: string }).content);
         } catch (error) {
           console.warn(`Failed to restore file ${filePath}:`, error);
         }
