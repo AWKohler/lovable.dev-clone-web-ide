@@ -3,11 +3,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
+import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
 import { FileTree } from './file-tree';
 import { CodeEditor } from './code-editor';
 import { TerminalDynamic } from './terminal-dynamic';
+import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabOption } from '@/components/ui/tabs';
 import { PanelLeft, RotateCcw, Save, RefreshCw } from 'lucide-react';
+
+type WorkspaceView = 'code' | 'preview';
 
 interface WorkspaceProps {
   projectId: string;
@@ -22,6 +27,9 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [showSidebar, setShowSidebar] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [currentView, setCurrentView] = useState<WorkspaceView>('code');
+  const [previews, setPreviews] = useState<PreviewInfo[]>([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
 
   // Helper function definitions - moved to top
   const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, any>> => {
@@ -120,6 +128,21 @@ export function Workspace({ projectId }: WorkspaceProps) {
         const container = await WebContainerManager.getInstance();
         setWebcontainer(container);
 
+        // Initialize preview store
+        const previewStore = getPreviewStore();
+        previewStore.setWebContainer(container);
+
+        // Subscribe to preview updates
+        const unsubscribe = previewStore.subscribe((newPreviews) => {
+          setPreviews(prevPreviews => {
+            // Auto-switch to preview tab when first server starts
+            if (newPreviews.length > 0 && prevPreviews.length === 0) {
+              setCurrentView('preview');
+            }
+            return newPreviews;
+          });
+        });
+
         // Check for saved state first
         const savedState = await WebContainerManager.loadProjectState(projectId);
         
@@ -161,19 +184,30 @@ export function Workspace({ projectId }: WorkspaceProps) {
         await refreshFileTree(container);
         
         setIsLoading(false);
+        
+        // Return cleanup function for preview subscription
+        return unsubscribe;
       } catch (error) {
         console.error('Failed to initialize WebContainer:', error);
         setIsLoading(false);
+        return () => {}; // Empty cleanup function
       }
     }
 
-    initWebContainer();
+    let cleanupPreview: (() => void) | undefined;
+
+    initWebContainer().then(cleanup => {
+      cleanupPreview = cleanup;
+    });
 
     // Listen for file system changes
     window.addEventListener('webcontainer-fs-change', handleFileSystemChange);
 
     return () => {
       window.removeEventListener('webcontainer-fs-change', handleFileSystemChange);
+      if (cleanupPreview) {
+        cleanupPreview();
+      }
     };
   }, [projectId, refreshFileTree, handleFileSystemChange]);
 
@@ -249,7 +283,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="h-12 bolt-border border-b flex items-center px-4 gap-2 bg-slate-800/30 backdrop-blur-sm">
+        <div className="h-12 bolt-border border-b flex items-center px-4 gap-4 bg-slate-800/30 backdrop-blur-sm">
           <Button
             variant="ghost"
             size="sm"
@@ -258,8 +292,18 @@ export function Workspace({ projectId }: WorkspaceProps) {
           >
             <PanelLeft size={16} />
           </Button>
+
+          {/* Tabs */}
+          <Tabs
+            options={[
+              { value: 'code', text: 'Code' },
+              { value: 'preview', text: `Preview${previews.length > 0 ? ` (${previews.length})` : ''}` }
+            ] as TabOption<WorkspaceView>[]}
+            selected={currentView}
+            onSelect={setCurrentView}
+          />
           
-          {selectedFile && (
+          {currentView === 'code' && selectedFile && (
             <>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-400">/</span>
@@ -295,24 +339,36 @@ export function Workspace({ projectId }: WorkspaceProps) {
           )}
         </div>
 
-        {/* Editor and Terminal */}
-        <div className="flex-1 flex flex-col">
-          {/* Code Editor */}
-          <div className="flex-1 min-h-0 relative">
-            <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm">
-              <CodeEditor
-                value={fileContent}
-                onChange={handleContentChange}
-                language={getLanguageFromFilename(selectedFile || '')}
-                filename={selectedFile}
-              />
-            </div>
-          </div>
+        {/* Content Area */}
+        <div className="flex-1 min-h-0">
+          {currentView === 'code' ? (
+            // Code View: Editor + Terminal
+            <div className="h-full flex flex-col">
+              {/* Code Editor */}
+              <div className="flex-1 min-h-0 relative">
+                <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm">
+                  <CodeEditor
+                    value={fileContent}
+                    onChange={handleContentChange}
+                    language={getLanguageFromFilename(selectedFile || '')}
+                    filename={selectedFile}
+                  />
+                </div>
+              </div>
 
-          {/* Terminal */}
-          <div className="h-64 bolt-border border-t bg-slate-900/95 backdrop-blur-sm">
-            <TerminalDynamic webcontainer={webcontainer} />
-          </div>
+              {/* Terminal */}
+              <div className="h-64 bolt-border border-t bg-slate-900/95 backdrop-blur-sm">
+                <TerminalDynamic webcontainer={webcontainer} />
+              </div>
+            </div>
+          ) : (
+            // Preview View
+            <Preview
+              previews={previews}
+              activePreviewIndex={activePreviewIndex}
+              onActivePreviewChange={setActivePreviewIndex}
+            />
+          )}
         </div>
       </div>
     </div>
