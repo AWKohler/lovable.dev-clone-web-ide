@@ -6,11 +6,12 @@ import { WebContainerManager } from '@/lib/webcontainer';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
 import { FileTree } from './file-tree';
 import { CodeEditor } from './code-editor';
-import { TerminalDynamic } from './terminal-dynamic';
+import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
 import { PanelLeft, RotateCcw, Save, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type WorkspaceView = 'code' | 'preview';
 
@@ -340,35 +341,45 @@ export function Workspace({ projectId }: WorkspaceProps) {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-h-0">
-          {currentView === 'code' ? (
-            // Code View: Editor + Terminal
-            <div className="h-full flex flex-col">
-              {/* Code Editor */}
-              <div className="flex-1 min-h-0 relative">
-                <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm">
-                  <CodeEditor
-                    value={fileContent}
-                    onChange={handleContentChange}
-                    language={getLanguageFromFilename(selectedFile || '')}
-                    filename={selectedFile}
-                  />
-                </div>
-              </div>
-
-              {/* Terminal */}
-              <div className="h-64 bolt-border border-t bg-slate-900/95 backdrop-blur-sm">
-                <TerminalDynamic webcontainer={webcontainer} />
+        <div className="flex-1 min-h-0 relative">
+          {/* Code View - Always mounted but conditionally visible */}
+          <div 
+            className={cn(
+              "absolute inset-0",
+              currentView === 'code' ? "flex flex-col" : "hidden"
+            )}
+          >
+            {/* Code Editor */}
+            <div className="flex-1 min-h-0 relative">
+              <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm">
+                <CodeEditor
+                  value={fileContent}
+                  onChange={handleContentChange}
+                  language={getLanguageFromFilename(selectedFile || '')}
+                  filename={selectedFile}
+                />
               </div>
             </div>
-          ) : (
-            // Preview View
+
+            {/* Terminal - Always mounted, persists across tab switches */}
+            <div className="h-64 bolt-border border-t bg-slate-900/95 backdrop-blur-sm">
+              <TerminalTabs webcontainer={webcontainer} />
+            </div>
+          </div>
+
+          {/* Preview View - Always mounted but conditionally visible */}
+          <div 
+            className={cn(
+              "absolute inset-0",
+              currentView === 'preview' ? "block" : "hidden"
+            )}
+          >
             <Preview
               previews={previews}
               activePreviewIndex={activePreviewIndex}
               onActivePreviewChange={setActivePreviewIndex}
             />
-          )}
+          </div>
         </div>
       </div>
     </div>

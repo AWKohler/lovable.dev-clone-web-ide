@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   RefreshCw, 
@@ -32,6 +32,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
   const [isLandscape, setIsLandscape] = useState(false);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const [currentPath, setCurrentPath] = useState('/');
+  const [iframeUrl, setIframeUrl] = useState<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const activePreview = previews[activePreviewIndex];
@@ -44,16 +45,48 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
 
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
-      window.open(activePreview.baseUrl + currentPath, '_blank');
+      // Extract the preview ID from the WebContainer URL
+      const match = activePreview.baseUrl.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
+      
+      if (match) {
+        // Open directly to the WebContainer URL with current path
+        const fullUrl = currentPath === '/' ? activePreview.baseUrl : activePreview.baseUrl + currentPath;
+        
+        // Create a new window with specific parameters to avoid the editor connection issue
+        const newWindow = window.open(
+          fullUrl,
+          '_blank',
+          'menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes,width=1280,height=720'
+        );
+        
+        if (newWindow) {
+          newWindow.focus();
+        }
+      } else {
+        console.warn('Invalid WebContainer URL:', activePreview.baseUrl);
+      }
     }
   }, [activePreview, currentPath]);
 
   const handlePathChange = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const newPath = (e.target as HTMLInputElement).value;
-      setCurrentPath(newPath.startsWith('/') ? newPath : '/' + newPath);
+      const normalizedPath = newPath.startsWith('/') ? newPath : '/' + newPath;
+      setCurrentPath(normalizedPath);
+      
+      if (activePreview) {
+        setIframeUrl(activePreview.baseUrl + normalizedPath);
+      }
     }
-  }, []);
+  }, [activePreview]);
+
+  // Update iframe URL when active preview or path changes
+  React.useEffect(() => {
+    if (activePreview) {
+      const newUrl = activePreview.baseUrl + currentPath;
+      setIframeUrl(newUrl);
+    }
+  }, [activePreview, currentPath]);
 
   const getIframeStyles = useCallback(() => {
     if (selectedDevice === 'desktop') {
@@ -88,8 +121,6 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
       </div>
     );
   }
-
-  const currentUrl = activePreview.baseUrl + currentPath;
 
   return (
     <div className="h-full flex flex-col bg-slate-900">
@@ -227,7 +258,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
         >
           <iframe
             ref={iframeRef}
-            src={currentUrl}
+            src={iframeUrl}
             className="w-full h-full border-none"
             title="Preview"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
