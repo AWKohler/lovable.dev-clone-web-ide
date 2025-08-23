@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --workbench-width: 75vw;
+  --workbench-left: 25vw;
+  --workbench-inner-width: calc(100vw - var(--workbench-left));
+  --header-height: 3rem;
 }
 
 @theme inline {
@@ -23,4 +27,84 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar styles */
+.modern-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #64748b #1e293b;
+}
+
+.modern-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb {
+  background: #64748b;
+  border-radius: 4px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Bolt-inspired color scheme */
+.bolt-bg {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+.bolt-border {
+  border-color: #334155;
+}
+
+.bolt-hover {
+  transition: all 0.2s ease-in-out;
+}
+
+.bolt-hover:hover {
+  background-color: #334155;
+  transform: translateY(-1px);
+}
+
+/* Animation classes */
+.bolt-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Monaco editor adjustments */
+.monaco-editor {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+}
+
+.monaco-editor .margin {
+  background-color: #0f172a !important;
+}
+
+.monaco-editor .monaco-editor-background {
+  background-color: #0f172a !important;
+}
+
+/* Terminal styles */
+.xterm {
+  padding: 8px;
+}
+
+.xterm .xterm-viewport {
+  background-color: transparent !important;
 }
