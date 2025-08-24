@@ -87,7 +87,10 @@ export async function GET(
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache', 
       'Expires': '0',
-      // Cross-origin headers for WebContainer
+      // WebContainer required headers
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      // Cross-origin headers
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
