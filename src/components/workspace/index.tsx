@@ -10,8 +10,19 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// Debounced save utility
+let saveTimeout: NodeJS.Timeout;
+function debouncedSaveProjectState(projectId: string, delay: number = 2000) {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async () => {
+    console.log('🔄 Auto-saving project state...');
+    await WebContainerManager.saveProjectState(projectId);
+    console.log('✅ Project state saved');
+  }, delay);
+}
 
 type WorkspaceView = 'code' | 'preview';
 
@@ -106,22 +117,37 @@ export function Workspace({ projectId }: WorkspaceProps) {
     setIsRefreshing(true);
     try {
       await refreshFileTree(webcontainer);
-      await WebContainerManager.saveProjectState(projectId);
+      // Note: Auto-save will be triggered by file system change detection
     } catch (error) {
       console.error('Failed to refresh files:', error);
     } finally {
       setIsRefreshing(false);
     }
-  }, [webcontainer, refreshFileTree, projectId]);
+  }, [webcontainer, refreshFileTree]);
 
   const handleFileSystemChange = useCallback(async (event: Event) => {
     const { container } = (event as CustomEvent).detail;
     if (container) {
       await refreshFileTree(container);
-      // Auto-save project state
-      await WebContainerManager.saveProjectState(projectId);
+      // Debounced auto-save to prevent saving during rapid changes
+      debouncedSaveProjectState(projectId);
     }
   }, [projectId, refreshFileTree]);
+
+  // Manual save function for immediate saving (e.g., after running scripts)
+  const handleManualSave = useCallback(async () => {
+    if (!webcontainer) return;
+    try {
+      console.log('💾 Manual save triggered...');
+      await WebContainerManager.saveProjectState(projectId);
+      console.log('✅ Manual save completed');
+      // Show some user feedback
+      alert('Project state saved successfully!');
+    } catch (error) {
+      console.error('❌ Manual save failed:', error);
+      alert('Failed to save project state');
+    }
+  }, [webcontainer, projectId]);
 
   useEffect(() => {
     async function initWebContainer() {
@@ -334,6 +360,16 @@ export function Workspace({ projectId }: WorkspaceProps) {
                 >
                   <Save size={16} />
                   <span className="ml-1">Save</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleManualSave}
+                  className="text-slate-400 hover:text-green-400 bolt-hover"
+                  title="Save entire project state (useful after running setup scripts)"
+                >
+                  <Database size={16} />
+                  <span className="ml-1">Save Project</span>
                 </Button>
               </div>
             </>
