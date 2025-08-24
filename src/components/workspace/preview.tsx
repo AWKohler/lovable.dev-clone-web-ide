@@ -44,36 +44,10 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
 
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
-      // Check if running on localhost (development)
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      
-      if (isLocalhost) {
-        alert('New tab preview functionality requires HTTPS.\n\nFor development testing:\n1. Run "ngrok http 3000" in terminal\n2. Access the app via the ngrok HTTPS URL\n\nOr deploy to a production HTTPS domain.');
-        return;
-      }
-
-      // Extract the preview ID from the WebContainer URL
-      const match = activePreview.baseUrl.match(/^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/);
-      
-      if (match) {
-        // Open directly to the WebContainer URL with current path
-        const fullUrl = currentPath === '/' ? activePreview.baseUrl : activePreview.baseUrl + currentPath;
-        
-        // Create a new window - WebContainer will handle the connection automatically
-        const newWindow = window.open(
-          fullUrl,
-          '_blank',
-          'menubar=no,toolbar=yes,location=yes,status=no,scrollbars=yes,resizable=yes,width=1280,height=720'
-        );
-        
-        if (newWindow) {
-          newWindow.focus();
-        }
-      } else {
-        console.warn('Invalid WebContainer URL:', activePreview.baseUrl);
-      }
+      // Simple approach matching bolt.diy exactly
+      window.open(activePreview.baseUrl, '_blank');
     }
-  }, [activePreview, currentPath]);
+  }, [activePreview]);
 
   const handlePathChange = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
