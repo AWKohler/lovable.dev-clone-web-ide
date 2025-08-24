@@ -177,31 +177,301 @@ export function Workspace({ projectId }: WorkspaceProps) {
           // Restore saved files
           await WebContainerManager.restoreFiles(container, savedState);
         } else {
-          // Initialize with default structure
+          // Initialize with Vite + React + TypeScript + Tailwind structure
           await container.mount({
             'README.md': {
               file: {
-                contents: `# ${projectId}\n\nWelcome to your new project!\n\nThis project is powered by WebContainer - a full Node.js runtime in your browser.`,
+                contents: '# React + TypeScript + Vite',
               },
             },
             'package.json': {
               file: {
                 contents: JSON.stringify({
                   name: projectId.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-                  version: '1.0.0',
-                  description: 'A WebContainer project',
-                  main: 'index.js',
+                  private: true,
+                  version: "0.0.0",
+                  type: "module",
                   scripts: {
-                    start: 'node index.js',
-                    dev: 'node index.js'
+                    dev: "vite",
+                    build: "tsc -b && vite build",
+                    lint: "eslint .",
+                    preview: "vite preview"
                   },
-                  dependencies: {}
+                  dependencies: {
+                    "react": "^18.3.1",
+                    "react-dom": "^18.3.1",
+                    "clsx": "^2.1.1",
+                    "tailwind-merge": "^2.5.4"
+                  },
+                  devDependencies: {
+                    "@eslint/js": "^9.17.0",
+                    "@tailwindcss/vite": "^4.0.0-beta.6",
+                    "@types/node": "^22.10.2",
+                    "@types/react": "^18.3.17",
+                    "@types/react-dom": "^18.3.5",
+                    "@vitejs/plugin-react": "^4.3.4",
+                    "eslint": "^9.17.0",
+                    "eslint-plugin-react-hooks": "^5.0.0",
+                    "eslint-plugin-react-refresh": "^0.4.16",
+                    "globals": "^15.13.0",
+                    "tailwindcss": "^4.0.0-beta.6",
+                    "typescript": "~5.6.2",
+                    "typescript-eslint": "^8.18.2",
+                    "vite": "^6.0.5"
+                  }
                 }, null, 2),
               },
             },
-            'index.js': {
+            'index.html': {
               file: {
-                contents: `// Welcome to your WebContainer project!\nconsole.log('Hello from WebContainer!');\n\n// Try running: npm start`,
+                contents: `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + React + TS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>`,
+              },
+            },
+            'vite.config.ts': {
+              file: {
+                contents: `import path from "path"
+import tailwindcss from "@tailwindcss/vite"
+import react from "@vitejs/plugin-react"
+import { defineConfig } from "vite"
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+})`,
+              },
+            },
+            'tsconfig.json': {
+              file: {
+                contents: JSON.stringify({
+                  compilerOptions: {
+                    target: "ESNext",
+                    useDefineForClassFields: true,
+                    lib: ["ESNext", "DOM"],
+                    module: "ESNext",
+                    skipLibCheck: true,
+                    moduleResolution: "bundler",
+                    allowImportingTsExtensions: true,
+                    resolveJsonModule: true,
+                    isolatedModules: true,
+                    noEmit: true,
+                    jsx: "react-jsx",
+                    baseUrl: ".",
+                    paths: {
+                      "@/*": ["./src/*"],
+                    },
+                  },
+                  include: ["src"],
+                  references: [
+                    { path: "./tsconfig.app.json" },
+                    { path: "./tsconfig.node.json" },
+                  ],
+                }, null, 2),
+              },
+            },
+            'tsconfig.app.json': {
+              file: {
+                contents: JSON.stringify({
+                  compilerOptions: {
+                    tsBuildInfoFile: "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+                    target: "ES2022",
+                    useDefineForClassFields: true,
+                    lib: ["ES2022", "DOM", "DOM.Iterable"],
+                    module: "ESNext",
+                    skipLibCheck: true,
+                    moduleResolution: "bundler",
+                    allowImportingTsExtensions: true,
+                    verbatimModuleSyntax: true,
+                    moduleDetection: "force",
+                    noEmit: true,
+                    jsx: "react-jsx",
+                    strict: true,
+                    noUnusedLocals: true,
+                    noUnusedParameters: true,
+                    erasableSyntaxOnly: true,
+                    noFallthroughCasesInSwitch: true,
+                    noUncheckedSideEffectImports: true,
+                    baseUrl: ".",
+                    paths: {
+                      "@/*": ["./src/*"],
+                    },
+                  },
+                  include: ["src"]
+                }, null, 2),
+              },
+            },
+            'tsconfig.node.json': {
+              file: {
+                contents: JSON.stringify({
+                  compilerOptions: {
+                    tsBuildInfoFile: "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+                    target: "ES2023",
+                    lib: ["ES2023"],
+                    module: "ESNext",
+                    skipLibCheck: true,
+                    moduleResolution: "bundler",
+                    allowImportingTsExtensions: true,
+                    verbatimModuleSyntax: true,
+                    moduleDetection: "force",
+                    noEmit: true,
+                    strict: true,
+                    noUnusedLocals: true,
+                    noUnusedParameters: true,
+                    erasableSyntaxOnly: true,
+                    noFallthroughCasesInSwitch: true,
+                    noUncheckedSideEffectImports: true
+                  },
+                  include: ["vite.config.ts"]
+                }, null, 2),
+              },
+            },
+            'components.json': {
+              file: {
+                contents: JSON.stringify({
+                  $schema: "https://ui.shadcn.com/schema.json",
+                  style: "new-york",
+                  rsc: false,
+                  tsx: true,
+                  tailwind: {
+                    config: "tailwind.config.js",
+                    css: "src/index.css",
+                    baseColor: "neutral",
+                    cssVariables: true,
+                  },
+                  aliases: {
+                    components: "@/components",
+                    utils: "@/lib/utils",
+                  },
+                }, null, 2),
+              },
+            },
+            'eslint.config.js': {
+              file: {
+                contents: `import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+import { globalIgnores } from 'eslint/config'
+
+export default tseslint.config([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs['recommended-latest'],
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.browser,
+    },
+  },
+])`,
+              },
+            },
+            '.gitignore': {
+              file: {
+                contents: `# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?`,
+              },
+            },
+            'src': {
+              directory: {
+                'main.tsx': {
+                  file: {
+                    contents: `import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)`,
+                  },
+                },
+                'App.tsx': {
+                  file: {
+                    contents: `function App() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <h1 className="text-2xl font-bold text-gray-800">
+        ✅ Setup successful! You can now start building with Vite + Tailwind +
+        shadcn/ui.
+      </h1>
+    </div>
+  )
+}
+
+export default App`,
+                  },
+                },
+                'index.css': {
+                  file: {
+                    contents: '@import "tailwindcss";',
+                  },
+                },
+                'vite-env.d.ts': {
+                  file: {
+                    contents: '/// <reference types="vite/client" />',
+                  },
+                },
+                'lib': {
+                  directory: {
+                    'utils.ts': {
+                      file: {
+                        contents: `import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}`,
+                      },
+                    },
+                  },
+                },
               },
             },
           });
