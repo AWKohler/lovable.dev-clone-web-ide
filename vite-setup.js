@@ -1,6 +1,6 @@
 // setup-vite-shadcn.js
 import { execSync } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const appName = process.argv[2] || "my-app";
@@ -21,10 +21,25 @@ process.chdir(appName);
 // 2. Install Tailwind
 run(`npm install tailwindcss @tailwindcss/vite`);
 
-// 3. Configure Tailwind in index.css
+// 3. Configure Tailwind in index.css (clean slate)
 writeFileSync("src/index.css", `@import "tailwindcss";\n`);
 
-// 4. Overwrite tsconfig.json
+// 4. Remove leftover Vite CSS (App.css, etc.)
+if (existsSync("src/App.css")) {
+  rmSync("src/App.css");
+}
+if (existsSync("src/index.css")) {
+  // already overwritten above
+}
+let mainFile = "src/main.tsx";
+if (existsSync(mainFile)) {
+  let mainContent = readFileSync(mainFile, "utf-8");
+  // remove App.css import if present
+  mainContent = mainContent.replace(/import\s+['"]\.\/App\.css['"];?\n?/, "");
+  writeFileSync(mainFile, mainContent);
+}
+
+// 5. Overwrite tsconfig.json
 writeFileSync(
   "tsconfig.json",
   JSON.stringify(
@@ -57,7 +72,7 @@ writeFileSync(
   )
 );
 
-// 5. Overwrite tsconfig.app.json
+// 6. Overwrite tsconfig.app.json
 writeFileSync(
   "tsconfig.app.json",
   JSON.stringify(
@@ -76,10 +91,10 @@ writeFileSync(
   )
 );
 
-// 6. Install Node types
+// 7. Install Node types
 run(`npm install -D @types/node`);
 
-// 7. Update vite.config.ts
+// 8. Update vite.config.ts
 writeFileSync(
   "vite.config.ts",
   `import path from "path"
@@ -99,7 +114,7 @@ export default defineConfig({
 `
 );
 
-// 8. Pre-seed components.json (skip shadcn init)
+// 9. Pre-seed components.json (skip shadcn init)
 writeFileSync(
   "components.json",
   JSON.stringify(
@@ -124,7 +139,7 @@ writeFileSync(
   )
 );
 
-// 9. Add utils.ts (needed for shadcn components later)
+// 10. Add utils.ts (needed for shadcn components later)
 mkdirSync("src/lib", { recursive: true });
 writeFileSync(
   "src/lib/utils.ts",
@@ -137,16 +152,18 @@ export function cn(...inputs: ClassValue[]) {
 `
 );
 
-// 10. Install clsx + tailwind-merge
+// 11. Install clsx + tailwind-merge
 run(`npm install clsx tailwind-merge`);
 
-// 11. Replace App.tsx with a placeholder
+// 12. Replace App.tsx with a friendly message
 writeFileSync(
   "src/App.tsx",
   `function App() {
   return (
-    <div className="flex min-h-svh items-center justify-center">
-      <h1 className="text-2xl font-bold">Vite + shadcn/ui setup complete ✅</h1>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <h1 className="text-2xl font-bold text-gray-800">
+        ✅ Setup successful! You can now start building with Vite + Tailwind + shadcn/ui.
+      </h1>
     </div>
   )
 }
@@ -155,7 +172,7 @@ export default App
 `
 );
 
-// 12. Run npm install to finalize
+// 13. Run npm install to finalize
 run(`npm install`);
 
 console.log("\n✅ Setup complete!");
