@@ -10,7 +10,7 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw, Zap, RotateCcw } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type WorkspaceView = 'code' | 'preview';
@@ -31,6 +31,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [currentView, setCurrentView] = useState<WorkspaceView>('code');
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [isDevServerRunning, setIsDevServerRunning] = useState(false);
 
   // Helper function definitions - moved to top
   const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, { type: 'file' | 'folder' }>> => {
@@ -67,205 +68,21 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const handleSaveFile = useCallback(async () => {
     if (!webcontainer || !selectedFile) return;
     
-    const saveWithAdvancedRecovery = async (): Promise<void> => {
-      try {
-        console.log(`💾 Attempting to save ${selectedFile}`);
-        
-        // First, try to verify file exists and get its current state
-        try {
-          const currentContent = await webcontainer.fs.readFile(selectedFile, 'utf8');
-          console.log('📖 File readable, current size:', currentContent.length);
-        } catch (readError) {
-          console.warn('⚠️ Cannot read file before save:', readError);
-        }
-        
-        // Try multiple save approaches
-        const saveAttempts = [
-          // Method 1: Direct write with utf8
-          async () => {
-            console.log('🔸 Method 1: Direct UTF-8 write');
-            await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
-          },
-          
-          // Method 2: Write without explicit encoding
-          async () => {
-            console.log('🔸 Method 2: Write without encoding');
-            await webcontainer.fs.writeFile(selectedFile, fileContent);
-          },
-          
-          // Method 3: Delete and recreate file
-          async () => {
-            console.log('🔸 Method 3: Delete and recreate');
-            try {
-              await webcontainer.fs.rm(selectedFile);
-            } catch (e) {
-              console.log('File deletion failed (might not exist):', e);
-            }
-            await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
-          },
-          
-          // Method 4: Write to temp file then move
-          async () => {
-            console.log('🔸 Method 4: Temp file approach');
-            const tempFile = selectedFile + '.tmp';
-            await webcontainer.fs.writeFile(tempFile, fileContent, 'utf8');
-            await webcontainer.fs.rm(selectedFile);
-            await webcontainer.fs.rename(tempFile, selectedFile);
-          },
-          
-          // Method 5: Force sync and try again
-          async () => {
-            console.log('🔸 Method 5: Force sync approach');
-            // Try to force filesystem sync
-            await webcontainer.spawn('sync', [], { cwd: '/' });
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
-          }
-        ];
-        
-        for (let i = 0; i < saveAttempts.length; i++) {
-          try {
-            await saveAttempts[i]();
-            
-            // Verify the save worked
-            const savedContent = await webcontainer.fs.readFile(selectedFile, 'utf8');
-            if (savedContent === fileContent) {
-              console.log(`✅ File saved successfully using method ${i + 1}:`, selectedFile);
-              setHasUnsavedChanges(false);
-              
-              // Save project state
-              await WebContainerManager.saveProjectState(projectId);
-              
-              // Refresh file tree to ensure it's in sync
-              await refreshFileTree(webcontainer);
-              return;
-            } else {
-              console.warn(`⚠️ Method ${i + 1} saved but content doesn't match`);
-            }
-          } catch (error) {
-            console.error(`❌ Method ${i + 1} failed:`, error);
-            if (i === saveAttempts.length - 1) {
-              throw error; // Last attempt failed
-            }
-          }
-        }
-        
-      } catch (error) {
-        console.error('💥 All save methods failed:', error);
-        
-        // Show detailed diagnostic info
-        try {
-          // Try to read the file to check if it exists and is readable
-          const currentContent = await webcontainer.fs.readFile(selectedFile, 'utf8');
-          console.log('📊 File exists and readable, size:', currentContent.length);
-        } catch (readError) {
-          console.log('📊 Cannot read file for diagnostics:', readError);
-        }
-        
-        // Check if WebContainer filesystem is corrupted
-        try {
-          const testFile = '/tmp/test-write.txt';
-          await webcontainer.fs.writeFile(testFile, 'test', 'utf8');
-          await webcontainer.fs.rm(testFile);
-          console.log('✅ WebContainer filesystem test passed');
-        } catch (fsError) {
-          console.error('💀 WebContainer filesystem appears corrupted:', fsError);
-          alert(`WebContainer filesystem may be corrupted!\n\nError: ${fsError}\n\nTry refreshing the page to reset WebContainer.`);
-          return;
-        }
-        
-        alert(`Failed to save ${selectedFile} using all methods!\n\nThis suggests the dev server may have corrupted the WebContainer filesystem.\n\nTry refreshing the page to reset WebContainer.`);
-        throw error;
-      }
-    };
-
-    await saveWithAdvancedRecovery();
-  }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
-
-  // Force save function that tries to stop dev server, save, then restart
-  const handleForceSave = useCallback(async () => {
-    if (!webcontainer || !selectedFile) return;
-
     try {
-      console.log('🛑 Force save: attempting to stop dev server...');
-      
-      // Try to stop any running processes (like dev server)
-      try {
-        // Kill any vite processes
-        const killProcess = await webcontainer.spawn('pkill', ['-f', 'vite'], { cwd: '/' });
-        await killProcess.exit;
-        
-        // Wait a moment for processes to stop
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log('✅ Dev server stopped');
-      } catch (error) {
-        console.log('ℹ️ No dev server running or couldn\'t stop it:', error);
-      }
-
-      // Now try to save the file
-      await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
-      console.log('✅ Force save successful:', selectedFile);
+      await webcontainer.fs.writeFile(selectedFile, fileContent);
       setHasUnsavedChanges(false);
+      console.log('File saved:', selectedFile);
       
       // Save project state
       await WebContainerManager.saveProjectState(projectId);
       
-      // Refresh file tree
+      // Refresh file tree to ensure it's in sync
       await refreshFileTree(webcontainer);
-      
-      alert('File saved successfully! You can restart your dev server if needed.');
-      
     } catch (error) {
-      console.error('❌ Force save failed:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      alert(`Force save also failed: ${errorMessage}\n\nThere might be a deeper WebContainer issue.`);
+      console.error('Failed to save file:', error);
     }
   }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
 
-  // WebContainer reset function to fix filesystem corruption
-  const handleWebContainerReset = useCallback(async () => {
-    if (!confirm('This will reset the WebContainer and may lose unsaved changes. Continue?')) {
-      return;
-    }
-
-    try {
-      console.log('🔄 Resetting WebContainer...');
-      
-      // Save current project state before reset
-      if (webcontainer) {
-        await WebContainerManager.saveProjectState(projectId);
-      }
-      
-      // Get a fresh WebContainer instance (force reset)
-      const newContainer = await WebContainerManager.resetInstance();
-      setWebcontainer(newContainer);
-      
-      // Re-initialize preview store with new container
-      const previewStore = getPreviewStore();
-      previewStore.setWebContainer(newContainer);
-      
-      // Reload the project state
-      const savedState = await WebContainerManager.loadProjectState(projectId);
-      if (savedState && Object.keys(savedState).length > 0) {
-        await WebContainerManager.restoreFiles(newContainer, savedState);
-      }
-      
-      // Refresh everything
-      await refreshFileTree(newContainer);
-      
-      // Clear current file selection to force reload
-      setSelectedFile(null);
-      setFileContent('');
-      setHasUnsavedChanges(false);
-      
-      console.log('✅ WebContainer reset complete');
-      alert('WebContainer has been reset. File saving should work normally now.');
-      
-    } catch (error) {
-      console.error('❌ WebContainer reset failed:', error);
-      alert('WebContainer reset failed. Try refreshing the entire page.');
-    }
-  }, [webcontainer, projectId, refreshFileTree]);
 
   const handleFileSelect = useCallback(async (filePath: string) => {
     if (!webcontainer || files[filePath]?.type !== 'file') return;
@@ -327,6 +144,9 @@ export function Workspace({ projectId }: WorkspaceProps) {
             }
             return newPreviews;
           });
+          
+          // Track if dev server is running
+          setIsDevServerRunning(newPreviews.length > 0);
         });
 
         // Check for saved state first
@@ -720,8 +540,8 @@ export function cn(...inputs: ClassValue[]) {
 
   return (
     <div className="h-screen flex bolt-bg text-white">
-      {/* Sidebar */}
-      {showSidebar && (
+      {/* Sidebar - Only show in code view */}
+      {showSidebar && currentView === 'code' && (
         <div className="w-80 bolt-border border-r flex flex-col bg-slate-800/50 backdrop-blur-sm">
           <div className="p-4 bolt-border border-b">
             <h2 className="text-lg font-semibold text-slate-200">Explorer</h2>
@@ -740,14 +560,17 @@ export function cn(...inputs: ClassValue[]) {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="h-12 bolt-border border-b flex items-center px-4 gap-4 bg-slate-800/30 backdrop-blur-sm">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="text-slate-400 hover:text-white bolt-hover"
-          >
-            <PanelLeft size={16} />
-          </Button>
+          {/* Sidebar toggle - Only in code view */}
+          {currentView === 'code' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="text-slate-400 hover:text-white bolt-hover"
+            >
+              <PanelLeft size={16} />
+            </Button>
+          )}
 
           {/* Tabs */}
           <Tabs
@@ -790,26 +613,6 @@ export function cn(...inputs: ClassValue[]) {
                   <Save size={16} />
                   <span className="ml-1">Save</span>
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleForceSave}
-                  className="text-slate-400 hover:text-orange-400 bolt-hover"
-                  title="Force save by stopping dev server temporarily"
-                >
-                  <Zap size={16} />
-                  <span className="ml-1">Force Save</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleWebContainerReset}
-                  className="text-slate-400 hover:text-red-400 bolt-hover"
-                  title="Reset WebContainer to fix filesystem corruption"
-                >
-                  <RotateCcw size={16} />
-                  <span className="ml-1">Reset WC</span>
-                </Button>
                 
               </div>
             </>
@@ -833,8 +636,17 @@ export function cn(...inputs: ClassValue[]) {
                   onChange={handleContentChange}
                   language={getLanguageFromFilename(selectedFile || '')}
                   filename={selectedFile}
+                  disabled={isDevServerRunning}
                 />
               </div>
+              {/* Overlay when dev server is running */}
+              {isDevServerRunning && (
+                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+                  <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-4 py-2 text-slate-300 text-sm">
+                    Editor disabled while dev server is running
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Terminal - Always mounted, persists across tab switches */}

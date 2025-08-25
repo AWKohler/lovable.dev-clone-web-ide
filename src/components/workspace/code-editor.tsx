@@ -7,9 +7,10 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   language: string;
   filename: string | null;
+  disabled?: boolean;
 }
 
-export function CodeEditor({ value, onChange, language, filename }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, language, filename, disabled = false }: CodeEditorProps) {
   const handleChange = (value: string | undefined) => {
     onChange(value || '');
   };
@@ -33,7 +34,7 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
       height="100%"
       language={language}
       value={value}
-      onChange={handleChange}
+      onChange={disabled ? undefined : handleChange}
       theme="vs-dark"
       options={{
         minimap: { enabled: false },
@@ -46,6 +47,7 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
         insertSpaces: true,
         wordWrap: 'on',
         bracketPairColorization: { enabled: true },
+        readOnly: disabled,
         guides: {
           bracketPairs: true,
           bracketPairsHorizontal: true,
@@ -53,32 +55,32 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
           indentation: true,
         },
         // Autocomplete is enabled by default in Monaco
-        quickSuggestions: {
+        quickSuggestions: disabled ? false : {
           other: true,
           comments: true,
           strings: true,
         },
-        acceptSuggestionOnCommitCharacter: true,
-        acceptSuggestionOnEnter: 'on',
+        acceptSuggestionOnCommitCharacter: !disabled,
+        acceptSuggestionOnEnter: disabled ? 'off' : 'on',
         accessibilitySupport: 'off',
         renderLineHighlight: 'line',
         colorDecorators: true,
-        contextmenu: true,
+        contextmenu: !disabled,
         copyWithSyntaxHighlighting: true,
-        cursorBlinking: 'blink',
-        cursorSmoothCaretAnimation: 'on',
+        cursorBlinking: disabled ? 'solid' : 'blink',
+        cursorSmoothCaretAnimation: disabled ? 'off' : 'on',
         cursorStyle: 'line',
-        dragAndDrop: true,
+        dragAndDrop: !disabled,
         emptySelectionClipboard: false,
         foldingHighlight: true,
-        formatOnPaste: true,
-        formatOnType: true,
+        formatOnPaste: !disabled,
+        formatOnType: !disabled,
         matchBrackets: 'always',
         occurrencesHighlight: 'singleFile',
         overviewRulerBorder: false,
         overviewRulerLanes: 3,
         padding: { top: 12, bottom: 12 },
-        parameterHints: { enabled: true },
+        parameterHints: { enabled: !disabled },
         quickSuggestionsDelay: 10,
         renderControlCharacters: false,
         renderValidationDecorations: 'on',
@@ -95,9 +97,9 @@ export function CodeEditor({ value, onChange, language, filename }: CodeEditorPr
           verticalSliderSize: 12,
           horizontalSliderSize: 12,
         },
-        selectionHighlight: true,
+        selectionHighlight: !disabled,
         smoothScrolling: true,
-        snippetSuggestions: 'top',
+        snippetSuggestions: disabled ? 'none' : 'top',
       }}
     />
   );
