@@ -26,6 +26,19 @@ export class WebContainerManager {
     }
   }
 
+  // Force reset the WebContainer instance
+  static async resetInstance(): Promise<WebContainer> {
+    console.log('🔄 Forcing WebContainer reset...');
+    
+    // Clear existing instance
+    this.instance = null;
+    this.isBooting = false;
+    this.bootPromise = null;
+    
+    // Get fresh instance
+    return this.getInstance();
+  }
+
   private static async boot(): Promise<WebContainer> {
     const container = await WebContainer.boot({
       coep: 'credentialless'
