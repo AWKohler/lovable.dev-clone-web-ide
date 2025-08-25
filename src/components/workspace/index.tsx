@@ -35,6 +35,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
+  const [devServerProcess, setDevServerProcess] = useState<{ kill: () => void } | null>(null);
 
   // Helper function definitions - moved to top
   const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, { type: 'file' | 'folder' }>> => {
@@ -165,7 +166,8 @@ export function Workspace({ projectId }: WorkspaceProps) {
     setIsStartingServer(true);
     try {
       // Start the dev server
-      await container.spawn('npm', ['run', 'dev']);
+      const serverProcess = await container.spawn('npm', ['run', 'dev']);
+      setDevServerProcess(serverProcess);
       console.log('Dev server started');
       
       // The preview store will automatically detect the server and update isDevServerRunning
@@ -176,17 +178,34 @@ export function Workspace({ projectId }: WorkspaceProps) {
     }
   }, [isInstalled, runNpmInstall]);
 
-  const stopDevServer = useCallback(async (container: WebContainer) => {
+  const stopDevServer = useCallback(async (container?: WebContainer) => {
     try {
-      // Kill all node processes (dev server)
-      await container.spawn('pkill', ['-f', 'node']);
-      console.log('Dev server stopped');
+      if (devServerProcess) {
+        // Kill the specific dev server process
+        devServerProcess.kill();
+        setDevServerProcess(null);
+        console.log('Dev server stopped via process.kill()');
+      } else if (container) {
+        // Fallback: try to kill all node processes
+        try {
+          await container.spawn('pkill', ['-f', 'vite']);
+          console.log('Dev server stopped via pkill vite');
+        } catch {
+          // If pkill fails, try killing node processes
+          try {
+            await container.spawn('pkill', ['-f', 'node.*dev']);
+            console.log('Dev server stopped via pkill node dev');
+          } catch {
+            console.log('Could not kill dev server processes');
+          }
+        }
+      }
       
       // The preview store will automatically update isDevServerRunning when server stops
     } catch (error) {
       console.error('Failed to stop dev server:', error);
     }
-  }, []);
+  }, [devServerProcess]);
 
   const handlePlayStopClick = useCallback(async () => {
     if (!webcontainer) return;
