@@ -10,7 +10,7 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type WorkspaceView = 'code' | 'preview';
@@ -67,18 +67,79 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const handleSaveFile = useCallback(async () => {
     if (!webcontainer || !selectedFile) return;
     
+    const saveWithRetry = async (retries: number = 3): Promise<void> => {
+      try {
+        console.log(`💾 Attempting to save ${selectedFile} (${retries} retries left)`);
+        
+        // Try to write file with explicit encoding
+        await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
+        
+        console.log('✅ File saved successfully:', selectedFile);
+        setHasUnsavedChanges(false);
+        
+        // Save project state
+        await WebContainerManager.saveProjectState(projectId);
+        
+        // Refresh file tree to ensure it's in sync
+        await refreshFileTree(webcontainer);
+        
+      } catch (error) {
+        console.error(`❌ Failed to save file (${retries} retries left):`, error);
+        
+        if (retries > 0) {
+          // Wait a bit and retry (dev server might be temporarily locking file)
+          console.log('🔄 Retrying save in 500ms...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return saveWithRetry(retries - 1);
+        } else {
+          // Final failure - show helpful message
+          console.error('💥 All save attempts failed');
+          alert(`Failed to save ${selectedFile}\n\nThis might be due to:\n- Dev server file locking\n- File permissions\n- WebContainer file system issues\n\nTry stopping the dev server temporarily or refreshing the page.`);
+          throw error;
+        }
+      }
+    };
+
+    await saveWithRetry();
+  }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
+
+  // Force save function that tries to stop dev server, save, then restart
+  const handleForceSave = useCallback(async () => {
+    if (!webcontainer || !selectedFile) return;
+
     try {
-      await webcontainer.fs.writeFile(selectedFile, fileContent);
+      console.log('🛑 Force save: attempting to stop dev server...');
+      
+      // Try to stop any running processes (like dev server)
+      try {
+        // Kill any vite processes
+        const killProcess = await webcontainer.spawn('pkill', ['-f', 'vite'], { cwd: '/' });
+        await killProcess.exit;
+        
+        // Wait a moment for processes to stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('✅ Dev server stopped');
+      } catch (error) {
+        console.log('ℹ️ No dev server running or couldn\'t stop it:', error);
+      }
+
+      // Now try to save the file
+      await webcontainer.fs.writeFile(selectedFile, fileContent, 'utf8');
+      console.log('✅ Force save successful:', selectedFile);
       setHasUnsavedChanges(false);
-      console.log('File saved:', selectedFile);
       
       // Save project state
       await WebContainerManager.saveProjectState(projectId);
       
-      // Refresh file tree to ensure it's in sync
+      // Refresh file tree
       await refreshFileTree(webcontainer);
+      
+      alert('File saved successfully! You can restart your dev server if needed.');
+      
     } catch (error) {
-      console.error('Failed to save file:', error);
+      console.error('❌ Force save failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Force save also failed: ${errorMessage}\n\nThere might be a deeper WebContainer issue.`);
     }
   }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
 
@@ -604,6 +665,16 @@ export function cn(...inputs: ClassValue[]) {
                 >
                   <Save size={16} />
                   <span className="ml-1">Save</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleForceSave}
+                  className="text-slate-400 hover:text-orange-400 bolt-hover"
+                  title="Force save by stopping dev server temporarily"
+                >
+                  <Zap size={16} />
+                  <span className="ml-1">Force Save</span>
                 </Button>
                 
               </div>
