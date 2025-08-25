@@ -10,7 +10,7 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw, Play, Square, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type WorkspaceView = 'code' | 'preview';
@@ -32,6 +32,9 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isStartingServer, setIsStartingServer] = useState(false);
 
   // Helper function definitions - moved to top
   const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, { type: 'file' | 'folder' }>> => {
@@ -124,6 +127,76 @@ export function Workspace({ projectId }: WorkspaceProps) {
       await WebContainerManager.saveProjectState(projectId);
     }
   }, [projectId, refreshFileTree]);
+
+  const runNpmInstall = useCallback(async (container: WebContainer) => {
+    setIsInstalling(true);
+    try {
+      // Remove node_modules if it exists
+      try {
+        await container.fs.rm('/node_modules', { recursive: true, force: true });
+      } catch {
+        // node_modules might not exist, that's ok
+      }
+      
+      // Run npm install
+      const installProcess = await container.spawn('npm', ['install']);
+      const exitCode = await installProcess.exit;
+      
+      if (exitCode === 0) {
+        setIsInstalled(true);
+        console.log('npm install completed successfully');
+      } else {
+        console.error('npm install failed with exit code:', exitCode);
+        setIsInstalled(false);
+      }
+    } catch (error) {
+      console.error('Failed to run npm install:', error);
+      setIsInstalled(false);
+    } finally {
+      setIsInstalling(false);
+    }
+  }, []);
+
+  const startDevServer = useCallback(async (container: WebContainer) => {
+    if (!isInstalled) {
+      await runNpmInstall(container);
+    }
+    
+    setIsStartingServer(true);
+    try {
+      // Start the dev server
+      await container.spawn('npm', ['run', 'dev']);
+      console.log('Dev server started');
+      
+      // The preview store will automatically detect the server and update isDevServerRunning
+    } catch (error) {
+      console.error('Failed to start dev server:', error);
+    } finally {
+      setIsStartingServer(false);
+    }
+  }, [isInstalled, runNpmInstall]);
+
+  const stopDevServer = useCallback(async (container: WebContainer) => {
+    try {
+      // Kill all node processes (dev server)
+      await container.spawn('pkill', ['-f', 'node']);
+      console.log('Dev server stopped');
+      
+      // The preview store will automatically update isDevServerRunning when server stops
+    } catch (error) {
+      console.error('Failed to stop dev server:', error);
+    }
+  }, []);
+
+  const handlePlayStopClick = useCallback(async () => {
+    if (!webcontainer) return;
+    
+    if (isDevServerRunning) {
+      await stopDevServer(webcontainer);
+    } else {
+      await startDevServer(webcontainer);
+    }
+  }, [webcontainer, isDevServerRunning, startDevServer, stopDevServer]);
 
   useEffect(() => {
     async function initWebContainer() {
@@ -459,6 +532,9 @@ export function cn(...inputs: ClassValue[]) {
         // Get initial file list
         await refreshFileTree(container);
         
+        // Run npm install on page load
+        await runNpmInstall(container);
+        
         setIsLoading(false);
         
         // Return cleanup function for preview subscription
@@ -485,7 +561,7 @@ export function cn(...inputs: ClassValue[]) {
         cleanupPreview();
       }
     };
-  }, [projectId, refreshFileTree, handleFileSystemChange]);
+  }, [projectId, refreshFileTree, handleFileSystemChange, runNpmInstall]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -581,6 +657,33 @@ export function cn(...inputs: ClassValue[]) {
             selected={currentView}
             onSelect={setCurrentView}
           />
+
+          {/* Play/Stop Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handlePlayStopClick}
+            disabled={isInstalling || isStartingServer}
+            className={cn(
+              "flex items-center gap-2 font-medium",
+              isDevServerRunning
+                ? "text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                : "text-green-400 hover:text-green-300 hover:bg-green-400/10"
+            )}
+          >
+            {isInstalling || isStartingServer ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : isDevServerRunning ? (
+              <Square size={16} fill="currentColor" />
+            ) : (
+              <Play size={16} fill="currentColor" />
+            )}
+            <span>
+              {isInstalling ? 'Installing...' : 
+               isStartingServer ? 'Starting...' : 
+               isDevServerRunning ? 'Stop' : 'Start'}
+            </span>
+          </Button>
           
           {currentView === 'code' && selectedFile && (
             <>
