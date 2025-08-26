@@ -89,6 +89,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
     }
   }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
 
+  
 
   const handleFileSelect = useCallback(async (filePath: string) => {
     if (!webcontainer || files[filePath]?.type !== 'file') return;
