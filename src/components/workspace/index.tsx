@@ -36,6 +36,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [isInstalled, setIsInstalled] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
   const [devServerProcess, setDevServerProcess] = useState<{ kill: () => void } | null>(null);
+  const [hydrating, setHydrating] = useState(true);
 
   // Helper function definitions - moved to top
   const getFileStructure = useCallback(async (container: WebContainer): Promise<Record<string, { type: 'file' | 'folder' }>> => {
@@ -124,10 +125,9 @@ export function Workspace({ projectId }: WorkspaceProps) {
     const { container } = (event as CustomEvent).detail;
     if (container) {
       await refreshFileTree(container);
-      // Auto-save project state (debounced to avoid excessive saves)
-      // Only save user-initiated changes, not programmatic ones
+      // Skip autosave while hydrating/init to avoid overwriting snapshots
       const { filename } = (event as CustomEvent).detail;
-      if (filename && !filename.includes('node_modules') && !filename.includes('.git')) {
+      if (!hydrating && filename && !filename.includes('node_modules') && !filename.includes('.git')) {
         await WebContainerManager.saveProjectState(projectId);
       }
     }
@@ -223,6 +223,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
 
   useEffect(() => {
     async function initWebContainer() {
+      setHydrating(true);
       try {
         const container = await WebContainerManager.getInstance();
         setWebcontainer(container);
@@ -245,7 +246,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
           setIsDevServerRunning(newPreviews.length > 0);
         });
 
-        // Always restore from saved state first; fall back to template if none
+        // Always restore from saved state first; fall back to template if none (suppress autosave during init)
         const savedState = await WebContainerManager.loadProjectState(projectId);
         if (savedState && Object.keys(savedState).length > 0) {
           await WebContainerManager.restoreFiles(container, savedState);
@@ -557,6 +558,7 @@ export function cn(...inputs: ClassValue[]) {
         await runNpmInstall(container);
         
         setIsLoading(false);
+        setHydrating(false);
         
         // Return cleanup function for preview subscription
         return unsubscribe;
