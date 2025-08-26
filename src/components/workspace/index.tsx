@@ -124,8 +124,12 @@ export function Workspace({ projectId }: WorkspaceProps) {
     const { container } = (event as CustomEvent).detail;
     if (container) {
       await refreshFileTree(container);
-      // Auto-save project state
-      await WebContainerManager.saveProjectState(projectId);
+      // Auto-save project state (debounced to avoid excessive saves)
+      // Only save user-initiated changes, not programmatic ones
+      const { filename } = (event as CustomEvent).detail;
+      if (filename && !filename.includes('node_modules') && !filename.includes('.git')) {
+        await WebContainerManager.saveProjectState(projectId);
+      }
     }
   }, [projectId, refreshFileTree]);
 
@@ -241,15 +245,25 @@ export function Workspace({ projectId }: WorkspaceProps) {
           setIsDevServerRunning(newPreviews.length > 0);
         });
 
-        // Check for saved state first
-        const savedState = await WebContainerManager.loadProjectState(projectId);
-        
-        if (savedState && Object.keys(savedState).length > 0) {
-          // Restore saved files
-          await WebContainerManager.restoreFiles(container, savedState);
-        } else {
-          // Initialize with Vite + React + TypeScript + Tailwind structure
-          await container.mount({
+        // Check if WebContainer already has files (from previous session)
+        let hasExistingFiles = false;
+        try {
+          const rootEntries = await container.fs.readdir('/', { withFileTypes: true });
+          hasExistingFiles = rootEntries.length > 0;
+        } catch {
+          hasExistingFiles = false;
+        }
+
+        if (!hasExistingFiles) {
+          // Only restore from localStorage if WebContainer is completely empty
+          const savedState = await WebContainerManager.loadProjectState(projectId);
+          
+          if (savedState && Object.keys(savedState).length > 0) {
+            // Restore saved files
+            await WebContainerManager.restoreFiles(container, savedState);
+          } else {
+            // Initialize with Vite + React + TypeScript + Tailwind structure
+            await container.mount({
             'README.md': {
               file: {
                 contents: '# React + TypeScript + Vite',
@@ -546,6 +560,7 @@ export function cn(...inputs: ClassValue[]) {
               },
             },
           });
+          }
         }
 
         // Get initial file list
