@@ -18,6 +18,9 @@ interface FileRecord {
 
 class IndexedDBStorage {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private saveTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private lastSaveTime: Map<string, number> = new Map();
+  private readonly MIN_SAVE_INTERVAL = 1000; // Minimum 1 second between saves
 
   private async getDB(): Promise<IDBDatabase> {
     if (!this.dbPromise) {
@@ -72,72 +75,111 @@ class IndexedDBStorage {
     }
   }
 
-  async saveProjectState(projectId: string, container: WebContainer): Promise<void> {
-    const db = await this.getDB();
-    const transaction = db.transaction([FILES_STORE], 'readwrite');
-    const store = transaction.objectStore(FILES_STORE);
-
-    // Clear existing files for this project
-    const index = store.index('projectId');
-    const existingFiles = await new Promise<FileRecord[]>((resolve, reject) => {
-      const request = index.getAll(projectId);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    // Delete existing files
-    for (const file of existingFiles) {
-      await new Promise<void>((resolve, reject) => {
-        const deleteRequest = store.delete(file.id);
-        deleteRequest.onsuccess = () => resolve();
-        deleteRequest.onerror = () => reject(deleteRequest.error);
-      });
+  // Debounced save to prevent excessive saves
+  async saveProjectStateDebounced(projectId: string, container: WebContainer): Promise<void> {
+    // Clear any existing timeout for this project
+    const existingTimeout = this.saveTimeouts.get(projectId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
     }
 
-    // Get all files from WebContainer
-    const files = await this.getAllFiles(container);
-    let totalSize = 0;
-    let compressedSize = 0;
+    // Check if we saved too recently
+    const lastSave = this.lastSaveTime.get(projectId) || 0;
+    const timeSinceLastSave = Date.now() - lastSave;
 
-    // Save each file
-    for (const [path, fileData] of Object.entries(files)) {
-      // Skip system files
-      if (path.includes('node_modules') || path.includes('.git')) continue;
+    if (timeSinceLastSave < this.MIN_SAVE_INTERVAL) {
+      // Debounce: wait before saving
+      const timeout = setTimeout(() => {
+        this.saveProjectStateNow(projectId, container);
+        this.saveTimeouts.delete(projectId);
+      }, this.MIN_SAVE_INTERVAL - timeSinceLastSave);
+      
+      this.saveTimeouts.set(projectId, timeout);
+    } else {
+      // Save immediately
+      await this.saveProjectStateNow(projectId, container);
+    }
+  }
 
-      const record: FileRecord = {
-        id: `${projectId}-${path}`,
-        projectId,
-        path,
-        type: fileData.type as 'file' | 'folder'
-      };
+  async saveProjectState(projectId: string, container: WebContainer): Promise<void> {
+    return this.saveProjectStateDebounced(projectId, container);
+  }
 
-      if (fileData.type === 'file' && fileData.content) {
-        const originalSize = fileData.content.length;
-        const compressed = this.compress(fileData.content);
-        const isSmaller = compressed.length < originalSize;
-        
-        record.content = isSmaller ? compressed : fileData.content;
-        record.compressed = isSmaller;
-        record.size = originalSize;
-        record.compressedSize = record.content.length;
-        
-        totalSize += originalSize;
-        compressedSize += record.content.length;
+  private async saveProjectStateNow(projectId: string, container: WebContainer): Promise<void> {
+    try {
+      // First, collect all data outside of any transaction
+      const files = await this.getAllFiles(container);
+      const records: FileRecord[] = [];
+      let totalSize = 0;
+      let compressedSize = 0;
+
+      // Prepare all records before starting transaction
+      for (const [path, fileData] of Object.entries(files)) {
+        // Skip system files
+        if (path.includes('node_modules') || path.includes('.git')) continue;
+
+        const record: FileRecord = {
+          id: `${projectId}-${path}`,
+          projectId,
+          path,
+          type: fileData.type as 'file' | 'folder'
+        };
+
+        if (fileData.type === 'file' && fileData.content) {
+          const originalSize = fileData.content.length;
+          const compressed = this.compress(fileData.content);
+          const isSmaller = compressed.length < originalSize;
+          
+          record.content = isSmaller ? compressed : fileData.content;
+          record.compressed = isSmaller;
+          record.size = originalSize;
+          record.compressedSize = record.content.length;
+          
+          totalSize += originalSize;
+          compressedSize += record.content.length;
+        }
+
+        records.push(record);
       }
 
+      // Now perform all database operations in a single transaction
+      const db = await this.getDB();
+      
       await new Promise<void>((resolve, reject) => {
-        const request = store.put(record);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        const transaction = db.transaction([FILES_STORE], 'readwrite');
+        const store = transaction.objectStore(FILES_STORE);
+        const index = store.index('projectId');
+        
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(new Error('Transaction aborted'));
+
+        // Clear existing files for this project
+        const clearRequest = index.getAllKeys(projectId);
+        clearRequest.onsuccess = () => {
+          const existingKeys = clearRequest.result;
+          
+          // Delete existing files
+          for (const key of existingKeys) {
+            store.delete(key);
+          }
+          
+          // Add new files
+          for (const record of records) {
+            store.put(record);
+          }
+        };
+        clearRequest.onerror = () => reject(clearRequest.error);
       });
+
+      // Record save time
+      this.lastSaveTime.set(projectId, Date.now());
+      
+      console.log(`SAVE webcontainer-${projectId} files: ${records.length} size: ${(totalSize / 1024).toFixed(2)}KB compressed: ${(compressedSize / 1024).toFixed(2)}KB`);
+    } catch (error) {
+      console.error('Failed to save to IndexedDB:', error);
+      throw error;
     }
-
-    await new Promise<void>((resolve, reject) => {
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
-
-    console.log(`SAVE webcontainer-${projectId} files: ${Object.keys(files).length} size: ${(totalSize / 1024).toFixed(2)}KB compressed: ${(compressedSize / 1024).toFixed(2)}KB`);
   }
 
   async loadProjectState(projectId: string): Promise<Record<string, { type: string; content?: string }> | null> {
