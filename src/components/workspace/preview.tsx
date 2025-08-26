@@ -95,7 +95,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           <h3 className="text-lg font-medium mb-2">No Preview Available</h3>
           <p className="text-sm">Start a development server to see a live preview</p>
           <p className="text-xs mt-2 text-slate-500">
-            Try running: <code className="bg-slate-800 px-1 rounded">npm run dev</code>
+            Try running: <code className="bg-slate-800 px-1 rounded">pnpm dev</code>
           </p>
         </div>
       </div>

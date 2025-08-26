@@ -135,7 +135,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
     }
   }, [projectId, refreshFileTree, hydrating]);
 
-  const runNpmInstall = useCallback(async (container: WebContainer) => {
+  const runPnpmInstall = useCallback(async (container: WebContainer) => {
     setIsInstalling(true);
     try {
       // Remove node_modules if it exists
@@ -145,19 +145,19 @@ export function Workspace({ projectId }: WorkspaceProps) {
         // node_modules might not exist, that's ok
       }
       
-      // Run npm install
-      const installProcess = await container.spawn('npm', ['install']);
+      // Run pnpm install
+      const installProcess = await container.spawn('pnpm', ['install']);
       const exitCode = await installProcess.exit;
       
       if (exitCode === 0) {
         setIsInstalled(true);
-        console.log('npm install completed successfully');
+        console.log('pnpm install completed successfully');
       } else {
-        console.error('npm install failed with exit code:', exitCode);
+        console.error('pnpm install failed with exit code:', exitCode);
         setIsInstalled(false);
       }
     } catch (error) {
-      console.error('Failed to run npm install:', error);
+      console.error('Failed to run pnpm install:', error);
       setIsInstalled(false);
     } finally {
       setIsInstalling(false);
@@ -166,13 +166,13 @@ export function Workspace({ projectId }: WorkspaceProps) {
 
   const startDevServer = useCallback(async (container: WebContainer) => {
     if (!isInstalled) {
-      await runNpmInstall(container);
+      await runPnpmInstall(container);
     }
     
     setIsStartingServer(true);
     try {
       // Start the dev server
-      const serverProcess = await container.spawn('npm', ['run', 'dev']);
+      const serverProcess = await container.spawn('pnpm', ['dev']);
       setDevServerProcess(serverProcess);
       console.log('Dev server started');
       
@@ -182,7 +182,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
     } finally {
       setIsStartingServer(false);
     }
-  }, [isInstalled, runNpmInstall]);
+  }, [isInstalled, runPnpmInstall]);
 
   const stopDevServer = useCallback(async (container?: WebContainer) => {
     try {
@@ -267,6 +267,11 @@ export function Workspace({ projectId }: WorkspaceProps) {
                   private: true,
                   version: "0.0.0",
                   type: "module",
+                  packageManager: "pnpm@9.0.0",
+                  engines: {
+                    node: ">=18.0.0",
+                    pnpm: ">=8.0.0"
+                  },
                   scripts: {
                     dev: "vite",
                     build: "tsc -b && vite build",
@@ -556,8 +561,8 @@ export function cn(...inputs: ClassValue[]) {
         // Get initial file list
         await refreshFileTree(container);
         
-        // Run npm install on page load - TEMPORARILY COMMENTED OUT FOR DEBUGGING
-        // await runNpmInstall(container);
+        // Run pnpm install on page load - TEMPORARILY COMMENTED OUT FOR DEBUGGING
+        // await runPnpmInstall(container);
         
         setIsLoading(false);
         setHydrating(false);
@@ -586,7 +591,7 @@ export function cn(...inputs: ClassValue[]) {
         cleanupPreview();
       }
     };
-  }, [projectId, refreshFileTree, handleFileSystemChange, runNpmInstall]);
+  }, [projectId, refreshFileTree, handleFileSystemChange, runPnpmInstall]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -764,17 +769,8 @@ export function cn(...inputs: ClassValue[]) {
                   onChange={handleContentChange}
                   language={getLanguageFromFilename(selectedFile || '')}
                   filename={selectedFile}
-                  disabled={isDevServerRunning}
                 />
               </div>
-              {/* Overlay when dev server is running */}
-              {isDevServerRunning && (
-                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-                  <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-4 py-2 text-slate-300 text-sm">
-                    Editor disabled while dev server is running
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Terminal - Always mounted, persists across tab switches */}

@@ -92,7 +92,7 @@ export function Terminal({ webcontainer }: TerminalProps) {
 
         // Initial welcome message
         terminal.writeln('Welcome to WebContainer Terminal!');
-        terminal.writeln('You can run Node.js, npm, and other commands here.');
+        terminal.writeln('You can run Node.js, pnpm, and other commands here.');
         terminal.writeln('');
 
         setIsReady(true);
