@@ -548,7 +548,6 @@ export function cn(...inputs: ClassValue[]) {
               },
             },
           });
-          }
         }
 
         // Get initial file list
