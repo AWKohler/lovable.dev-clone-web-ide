@@ -245,23 +245,11 @@ export function Workspace({ projectId }: WorkspaceProps) {
           setIsDevServerRunning(newPreviews.length > 0);
         });
 
-        // Check if WebContainer already has files (from previous session)
-        let hasExistingFiles = false;
-        try {
-          const rootEntries = await container.fs.readdir('/', { withFileTypes: true });
-          hasExistingFiles = rootEntries.length > 0;
-        } catch {
-          hasExistingFiles = false;
-        }
-
-        if (!hasExistingFiles) {
-          // Only restore from localStorage if WebContainer is completely empty
-          const savedState = await WebContainerManager.loadProjectState(projectId);
-          
-          if (savedState && Object.keys(savedState).length > 0) {
-            // Restore saved files
-            await WebContainerManager.restoreFiles(container, savedState);
-          } else {
+        // Always restore from saved state first; fall back to template if none
+        const savedState = await WebContainerManager.loadProjectState(projectId);
+        if (savedState && Object.keys(savedState).length > 0) {
+          await WebContainerManager.restoreFiles(container, savedState);
+        } else {
             // Initialize with Vite + React + TypeScript + Tailwind structure
             await container.mount({
             'README.md': {
