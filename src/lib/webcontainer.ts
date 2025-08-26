@@ -1,4 +1,5 @@
 import { WebContainer } from '@webcontainer/api';
+import { indexedDBStorage } from './indexeddb-storage';
 
 export class WebContainerManager {
   private static instance: WebContainer | null = null;
@@ -66,8 +67,7 @@ export class WebContainerManager {
     if (!this.instance) return;
 
     try {
-      const files = await this.getAllFiles(this.instance);
-      localStorage.setItem(`webcontainer-${projectId}`, JSON.stringify(files));
+      await indexedDBStorage.saveProjectState(projectId, this.instance);
     } catch (error) {
       console.warn('Failed to save project state:', error);
     }
@@ -75,88 +75,16 @@ export class WebContainerManager {
 
   static async loadProjectState(projectId: string): Promise<Record<string, unknown> | null> {
     try {
-      const saved = localStorage.getItem(`webcontainer-${projectId}`);
-      return saved ? JSON.parse(saved) : null;
+      return await indexedDBStorage.loadProjectState(projectId);
     } catch (error) {
       console.warn('Failed to load project state:', error);
       return null;
     }
   }
 
-  private static async getAllFiles(container: WebContainer): Promise<Record<string, unknown>> {
-    const files: Record<string, unknown> = {};
-    
-    async function processDirectory(path: string) {
-      try {
-        const entries = await container.fs.readdir(path, { withFileTypes: true });
-        
-        for (const entry of entries) {
-          const fullPath = path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
-          
-          if (entry.isDirectory()) {
-            files[fullPath] = { type: 'folder' };
-            await processDirectory(fullPath);
-          } else {
-            try {
-              const content = await container.fs.readFile(fullPath, 'utf8');
-              files[fullPath] = { 
-                type: 'file',
-                content: content
-              };
-            } catch {
-              // Handle binary files
-              files[fullPath] = { type: 'file' };
-            }
-          }
-        }
-      } catch (error) {
-        console.warn(`Error reading directory ${path}:`, error);
-      }
-    }
-
-    await processDirectory('/');
-    return files;
-  }
 
   static async restoreFiles(container: WebContainer, files: Record<string, unknown>): Promise<void> {
-    // Clear existing files first (except node_modules)
-    try {
-      const entries = await container.fs.readdir('/', { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name !== 'node_modules' && entry.name !== '.git') {
-          await container.fs.rm(`/${entry.name}`, { recursive: true, force: true });
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to clear existing files:', error);
-    }
-
-    // Restore files
-    const sortedPaths = Object.keys(files).sort((a, b) => a.length - b.length);
-    
-    for (const filePath of sortedPaths) {
-      const fileData = files[filePath];
-      
-      if ((fileData as { type: string }).type === 'folder') {
-        try {
-          await container.fs.mkdir(filePath, { recursive: true });
-        } catch (error) {
-          console.warn(`Failed to create directory ${filePath}:`, error);
-        }
-      } else if ((fileData as { type: string; content?: string }).type === 'file' && (fileData as { content?: string }).content !== undefined) {
-        try {
-          // Ensure parent directory exists
-          const parentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
-          if (parentDir !== '/') {
-            await container.fs.mkdir(parentDir, { recursive: true });
-          }
-          
-          await container.fs.writeFile(filePath, (fileData as { content: string }).content);
-        } catch (error) {
-          console.warn(`Failed to restore file ${filePath}:`, error);
-        }
-      }
-    }
+    await indexedDBStorage.restoreFiles(container, files as Record<string, { type: string; content?: string }>);
   }
 
   static destroy(): void {

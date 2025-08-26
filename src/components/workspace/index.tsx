@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
 import { PanelLeft, Save, RefreshCw, Play, Square, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import '@/lib/debug-storage'; // Make debug utilities available in console
 
 type WorkspaceView = 'code' | 'preview';
 
@@ -131,7 +132,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
         await WebContainerManager.saveProjectState(projectId);
       }
     }
-  }, [projectId, refreshFileTree]);
+  }, [projectId, refreshFileTree, hydrating]);
 
   const runNpmInstall = useCallback(async (container: WebContainer) => {
     setIsInstalling(true);
@@ -554,8 +555,8 @@ export function cn(...inputs: ClassValue[]) {
         // Get initial file list
         await refreshFileTree(container);
         
-        // Run npm install on page load
-        await runNpmInstall(container);
+        // Run npm install on page load - TEMPORARILY COMMENTED OUT FOR DEBUGGING
+        // await runNpmInstall(container);
         
         setIsLoading(false);
         setHydrating(false);
