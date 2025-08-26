@@ -5,6 +5,7 @@ import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
 import { FileTree } from './file-tree';
+import { AgentPanel } from '@/components/agent/AgentPanel';
 import { CodeEditor } from './code-editor';
 import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
@@ -27,6 +28,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [fileContent, setFileContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'agent'>('files');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('code');
@@ -186,26 +188,41 @@ export function Workspace({ projectId }: WorkspaceProps) {
 
   const stopDevServer = useCallback(async (container?: WebContainer) => {
     try {
+      console.log('🛑 Stopping dev server...');
+      
       if (devServerProcess) {
         // Kill the specific dev server process
         devServerProcess.kill();
         setDevServerProcess(null);
-        console.log('Dev server stopped via process.kill()');
+        console.log('✅ Dev server stopped via process.kill()');
       } else if (container) {
-        // Fallback: try to kill all node processes
-        try {
-          await container.spawn('pkill', ['-f', 'vite']);
-          console.log('Dev server stopped via pkill vite');
-        } catch {
-          // If pkill fails, try killing node processes
+        // More aggressive process cleanup for WebContainer
+        const killCommands = [
+          ['pkill', '-f', 'vite'],
+          ['pkill', '-f', 'node.*dev'],
+          ['pkill', '-f', 'pnpm.*dev'],
+        ];
+        
+        for (const [cmd, ...args] of killCommands) {
           try {
-            await container.spawn('pkill', ['-f', 'node.*dev']);
-            console.log('Dev server stopped via pkill node dev');
+            await container.spawn(cmd, args);
+            console.log('✅ Executed:', cmd, args.join(' '));
           } catch {
-            console.log('Could not kill dev server processes');
+            // Ignore errors - process might not exist
           }
         }
+        
+        // Also try to kill processes on Vite's default port
+        try {
+          await container.spawn('pkill', ['-f', ':5173']);
+          console.log('✅ Killed processes on port 5173');
+        } catch {
+          // Ignore errors
+        }
       }
+      
+      // Give processes time to clean up
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // The preview store will automatically update isDevServerRunning when server stops
     } catch (error) {
@@ -326,15 +343,53 @@ export function Workspace({ projectId }: WorkspaceProps) {
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import createWebContainerVitePlugin from "./webcontainer-vite-plugin.js"
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(), 
+    tailwindcss(),
+    createWebContainerVitePlugin()
+  ],
+  server: {
+    watch: {
+      usePolling: true,
+      interval: 150,
+      binaryInterval: 300,
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**']
+    },
+    // Disable file watching optimizations that can cause issues in WebContainers
+    fs: {
+      strict: false
+    },
+    // Reduce HMR noise
+    hmr: {
+      overlay: false
+    }
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Optimize for WebContainer environment
+  define: {
+    'process.env.VITE_WEBCONTAINER': 'true'
+  },
+  optimizeDeps: {
+    // Reduce aggressive pre-bundling that can conflict with file saves
+    include: ['react', 'react-dom'],
+    force: false
+  },
+  // Reduce build optimizations that might interfere with file watching
+  build: {
+    rollupOptions: {
+      watch: {
+        buildDelay: 100
+      }
+    }
+  }
 })`,
               },
             },
@@ -497,6 +552,114 @@ dist-ssr
 *.sw?`,
               },
             },
+            'webcontainer-vite-plugin.js': {
+              file: {
+                contents: `// Advanced WebContainer Vite integration
+// This plugin provides better file watching for WebContainer environments
+
+export function createWebContainerVitePlugin() {
+  let server;
+  
+  return {
+    name: 'webcontainer-integration',
+    
+    configureServer(devServer) {
+      server = devServer;
+      
+      // Try to detect if we're in a WebContainer environment
+      const isWebContainer = typeof window !== 'undefined' && 
+        (window.webcontainer || window.__WEBCONTAINER__ || process.env.VITE_WEBCONTAINER);
+      
+      if (!isWebContainer) {
+        console.log('⚡ Standard Vite watcher (not in WebContainer)');
+        return;
+      }
+      
+      console.log('🌐 WebContainer environment detected, optimizing watcher...');
+      
+      // Override the default watcher behavior
+      const originalWatcher = server.watcher;
+      const watchedFiles = new Set();
+      const pendingEvents = new Map();
+      
+      // Create a more WebContainer-friendly watcher
+      server.watcher = {
+        ...originalWatcher,
+        
+        // Debounced emit to prevent rapid-fire events
+        emit(event, filePath, ...args) {
+          const key = event + ':' + filePath;
+          
+          // Clear any pending event for this file
+          if (pendingEvents.has(key)) {
+            clearTimeout(pendingEvents.get(key));
+          }
+          
+          // Debounce the event
+          const timeout = setTimeout(() => {
+            console.log('🔄 File', event + ':', filePath);
+            originalWatcher.emit.call(this, event, filePath, ...args);
+            pendingEvents.delete(key);
+          }, 75);
+          
+          pendingEvents.set(key, timeout);
+        },
+        
+        // Override close to clean up
+        close() {
+          pendingEvents.forEach(timeout => clearTimeout(timeout));
+          pendingEvents.clear();
+          return originalWatcher.close.call(this);
+        }
+      };
+      
+      console.log('🔧 WebContainer watcher optimizations applied');
+    },
+    
+    // Configure build optimizations for WebContainer
+    config(config, { command }) {
+      if (command === 'serve') {
+        // Development server optimizations
+        config.server = config.server || {};
+        config.server.watch = config.server.watch || {};
+        
+        // Use polling with optimized intervals
+        Object.assign(config.server.watch, {
+          usePolling: true,
+          interval: 150,
+          binaryInterval: 300,
+          ignored: [
+            '**/node_modules/**',
+            '**/.git/**',
+            '**/dist/**',
+            '**/coverage/**',
+            '**/*.log'
+          ]
+        });
+        
+        console.log('⚙️ WebContainer Vite config optimizations applied');
+      }
+    },
+    
+    // Handle HMR updates with delay
+    handleHotUpdate(ctx) {
+      const { file } = ctx;
+      
+      // Add small delay to ensure file operations complete
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          console.log('🔥 HMR update:', file);
+          resolve();
+        }, 50);
+      });
+    }
+  };
+}
+
+// Default export for easy import
+export default createWebContainerVitePlugin;`,
+              },
+            },
             'src': {
               directory: {
                 'main.tsx': {
@@ -649,15 +812,28 @@ export function cn(...inputs: ClassValue[]) {
       {/* Sidebar - Only show in code view */}
       {showSidebar && currentView === 'code' && (
         <div className="w-80 bolt-border border-r flex flex-col bg-slate-800/50 backdrop-blur-sm">
-          <div className="p-4 bolt-border border-b">
-            <h2 className="text-lg font-semibold text-slate-200">Explorer</h2>
+          <div className="p-2 bolt-border border-b">
+            <Tabs
+              options={[
+                { value: 'files', text: 'Files' },
+                { value: 'agent', text: 'Agent' },
+              ] as TabOption<'files' | 'agent'>[]}
+              selected={sidebarTab}
+              onSelect={(v) => setSidebarTab(v as 'files' | 'agent')}
+            />
           </div>
           <div className="flex-1 overflow-auto modern-scrollbar">
-            <FileTree 
-              files={files}
-              selectedFile={selectedFile}
-              onFileSelect={handleFileSelect}
-            />
+            {sidebarTab === 'files' ? (
+              <FileTree 
+                files={files}
+                selectedFile={selectedFile}
+                onFileSelect={handleFileSelect}
+              />
+            ) : (
+              <div className="p-2 h-full">
+                <AgentPanel className="h-full" />
+              </div>
+            )}
           </div>
         </div>
       )}

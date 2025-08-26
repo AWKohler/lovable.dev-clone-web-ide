@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 
 export async function GET() {
   try {
+    const db = getDb();
     const allProjects = await db.select().from(projects);
     return NextResponse.json(allProjects);
   } catch {
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
     }
 
+    const db = getDb();
     const [newProject] = await db.insert(projects).values({
       name,
       description: description || null,
