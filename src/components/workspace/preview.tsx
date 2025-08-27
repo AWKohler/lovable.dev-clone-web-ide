@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   RefreshCw, 
@@ -18,6 +18,12 @@ interface PreviewProps {
   previews: PreviewInfo[];
   activePreviewIndex: number;
   onActivePreviewChange: (index: number) => void;
+  // Optional to allow headerless/controlled mode
+  showHeader?: boolean;
+  currentPath?: string;
+  selectedDevice?: keyof typeof DEVICE_SIZES;
+  isLandscape?: boolean;
+  reloadKey?: number;
 }
 
 const DEVICE_SIZES = {
@@ -26,11 +32,11 @@ const DEVICE_SIZES = {
   mobile: { name: 'Mobile', width: 375, height: 667, icon: Smartphone },
 };
 
-export function Preview({ previews, activePreviewIndex, onActivePreviewChange }: PreviewProps) {
-  const [selectedDevice, setSelectedDevice] = useState<keyof typeof DEVICE_SIZES>('desktop');
-  const [isLandscape, setIsLandscape] = useState(false);
+export function Preview({ previews, activePreviewIndex, onActivePreviewChange, showHeader = true, currentPath, selectedDevice, isLandscape, reloadKey }: PreviewProps) {
+  const [internalDevice, setInternalDevice] = useState<keyof typeof DEVICE_SIZES>('desktop');
+  const [internalLandscape, setInternalLandscape] = useState(false);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
-  const [currentPath, setCurrentPath] = useState('/');
+  const [internalPath, setInternalPath] = useState('/');
   const [iframeUrl, setIframeUrl] = useState<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -53,7 +59,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
     if (e.key === 'Enter') {
       const newPath = (e.target as HTMLInputElement).value;
       const normalizedPath = newPath.startsWith('/') ? newPath : '/' + newPath;
-      setCurrentPath(normalizedPath);
+      setInternalPath(normalizedPath);
       
       if (activePreview) {
         setIframeUrl(activePreview.baseUrl + normalizedPath);
@@ -62,21 +68,33 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
   }, [activePreview]);
 
   // Update iframe URL when active preview or path changes
-  React.useEffect(() => {
+  useEffect(() => {
+    const path = (currentPath ?? internalPath) || '/';
     if (activePreview) {
-      const newUrl = activePreview.baseUrl + currentPath;
+      const newUrl = activePreview.baseUrl + path;
       setIframeUrl(newUrl);
     }
-  }, [activePreview, currentPath]);
+  }, [activePreview, currentPath, internalPath]);
+
+  // React to external reload requests
+  useEffect(() => {
+    if (reloadKey != null) {
+      reloadPreview();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
+
+  const effectiveDevice = selectedDevice ?? internalDevice;
+  const effectiveLandscape = isLandscape ?? internalLandscape;
 
   const getIframeStyles = useCallback(() => {
-    if (selectedDevice === 'desktop') {
+    if (effectiveDevice === 'desktop') {
       return { width: '100%', height: '100%' };
     }
 
-    const device = DEVICE_SIZES[selectedDevice];
-    const width = isLandscape ? device.height : device.width;
-    const height = isLandscape ? device.width : device.height;
+    const device = DEVICE_SIZES[effectiveDevice];
+    const width = effectiveLandscape ? device.height : device.width;
+    const height = effectiveLandscape ? device.width : device.height;
 
     return { 
       width: `${width}px`, 
@@ -84,18 +102,18 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
       maxWidth: '100%',
       maxHeight: '100%'
     };
-  }, [selectedDevice, isLandscape]);
+  }, [effectiveDevice, effectiveLandscape]);
 
 
   if (!activePreview) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-900 text-slate-400">
+      <div className="h-full flex items-center justify-center bg-elevated text-muted">
         <div className="text-center">
           <div className="text-4xl mb-4">🚀</div>
           <h3 className="text-lg font-medium mb-2">No Preview Available</h3>
           <p className="text-sm">Start a development server to see a live preview</p>
-          <p className="text-xs mt-2 text-slate-500">
-            Try running: <code className="bg-slate-800 px-1 rounded">pnpm dev</code>
+          <p className="text-xs mt-2 text-muted">
+            Try running: <code className="bg-elevated px-1 rounded border border-border">pnpm dev</code>
           </p>
         </div>
       </div>
@@ -103,15 +121,16 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-900">
-      {/* Preview Header */}
-      <div className="flex items-center gap-2 p-3 bg-slate-800 border-b border-slate-700">
+    <div className="h-full flex flex-col bg-elevated">
+      {/* Preview Header (optional) */}
+      {showHeader && (
+      <div className="flex items-center gap-2 p-3 bg-soft border-b border-border">
         {/* Controls */}
         <Button
           variant="ghost"
           size="sm"
           onClick={reloadPreview}
-          className="text-slate-400 hover:text-white"
+          className="text-muted hover:text-fg"
         >
           <RefreshCw size={16} />
         </Button>
@@ -121,14 +140,14 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           <div className="relative">
             <button
               onClick={() => setIsPortDropdownOpen(!isPortDropdownOpen)}
-              className="flex items-center gap-1 px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-300"
+              className="flex items-center gap-1 px-2 py-1 bg-elevated hover:bg-elevated/80 rounded text-sm text-muted border border-border"
             >
               <span>:{activePreview.port}</span>
               <ChevronDown size={14} />
             </button>
             
             {isPortDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-700 rounded shadow-lg z-50">
+              <div className="absolute top-full left-0 mt-1 bg-elevated border border-border rounded shadow-lg z-50">
                 {previews.map((preview, index) => (
                   <button
                     key={preview.port}
@@ -137,8 +156,8 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
                       setIsPortDropdownOpen(false);
                     }}
                     className={cn(
-                      "block w-full px-3 py-2 text-left text-sm hover:bg-slate-700",
-                      index === activePreviewIndex ? "text-blue-400" : "text-slate-300"
+                      "block w-full px-3 py-2 text-left text-sm hover:bg-soft",
+                      index === activePreviewIndex ? "text-accent" : "text-muted"
                     )}
                   >
                     Port {preview.port}
@@ -150,14 +169,14 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
         )}
 
         {/* URL Bar */}
-        <div className="flex-1 flex items-center bg-slate-700 rounded px-3 py-1">
-          <span className="text-slate-400 text-sm mr-2">{activePreview.baseUrl}</span>
+        <div className="flex-1 flex items-center bg-elevated rounded px-3 py-1 border border-border">
+          <span className="text-muted text-sm mr-2">{activePreview.baseUrl}</span>
           <input
             type="text"
-            defaultValue={currentPath}
+            defaultValue={internalPath}
             onKeyDown={handlePathChange}
             placeholder="/"
-            className="flex-1 bg-transparent text-slate-200 text-sm outline-none"
+            className="flex-1 bg-transparent text-fg text-sm outline-none"
           />
         </div>
 
@@ -166,10 +185,10 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedDevice('desktop')}
+            onClick={() => setInternalDevice('desktop')}
             className={cn(
-              "text-slate-400 hover:text-white",
-              selectedDevice === 'desktop' && "text-blue-400"
+              "text-muted hover:text-fg",
+              internalDevice === 'desktop' && "text-accent"
             )}
             title="Desktop View"
           >
@@ -179,10 +198,10 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedDevice('tablet')}
+            onClick={() => setInternalDevice('tablet')}
             className={cn(
-              "text-slate-400 hover:text-white",
-              selectedDevice === 'tablet' && "text-blue-400"
+              "text-muted hover:text-fg",
+              internalDevice === 'tablet' && "text-accent"
             )}
             title="Tablet View"
           >
@@ -192,22 +211,22 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedDevice('mobile')}
+            onClick={() => setInternalDevice('mobile')}
             className={cn(
-              "text-slate-400 hover:text-white",
-              selectedDevice === 'mobile' && "text-blue-400"
+              "text-muted hover:text-fg",
+              internalDevice === 'mobile' && "text-accent"
             )}
             title="Mobile View"
           >
             <Smartphone size={16} />
           </Button>
 
-          {selectedDevice !== 'desktop' && (
+          {internalDevice !== 'desktop' && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsLandscape(!isLandscape)}
-              className="text-slate-400 hover:text-white"
+              onClick={() => setInternalLandscape(!internalLandscape)}
+              className="text-muted hover:text-fg"
               title="Rotate Device"
             >
               <RotateCcw size={16} />
@@ -220,19 +239,20 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
           variant="ghost"
           size="sm"
           onClick={openInNewTab}
-          className="text-slate-400 hover:text-white"
+          className="text-muted hover:text-fg"
           title="Open in New Tab"
         >
           <ExternalLink size={16} />
         </Button>
       </div>
+      )}
 
       {/* Preview Content */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-auto bg-slate-900">
+      <div className="flex-1 flex items-center justify-center p-4 overflow-auto bg-elevated">
         <div 
           className={cn(
-            "bg-white rounded-lg overflow-hidden shadow-2xl",
-            selectedDevice !== 'desktop' && "border-8 border-slate-800"
+            "bg-surface rounded-lg overflow-hidden shadow-2xl border border-border",
+            (selectedDevice ?? internalDevice) !== 'desktop' && "border-8 border-soft"
           )}
           style={getIframeStyles()}
         >
@@ -248,12 +268,12 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange }:
       </div>
 
       {/* Device Info */}
-      {selectedDevice !== 'desktop' && (
-        <div className="px-4 py-2 bg-slate-800 border-t border-slate-700 text-center text-xs text-slate-400">
-          {DEVICE_SIZES[selectedDevice].name} • {isLandscape ? 'Landscape' : 'Portrait'} • {
-            isLandscape ? 
-            `${DEVICE_SIZES[selectedDevice].height} × ${DEVICE_SIZES[selectedDevice].width}` :
-            `${DEVICE_SIZES[selectedDevice].width} × ${DEVICE_SIZES[selectedDevice].height}`
+      {(selectedDevice ?? internalDevice) !== 'desktop' && (
+        <div className="px-4 py-2 bg-soft border-t border-border text-center text-xs text-muted">
+          {DEVICE_SIZES[selectedDevice ?? internalDevice].name} • {(isLandscape ?? internalLandscape) ? 'Landscape' : 'Portrait'} • {
+            (isLandscape ?? internalLandscape) ? 
+            `${DEVICE_SIZES[selectedDevice ?? internalDevice].height} × ${DEVICE_SIZES[selectedDevice ?? internalDevice].width}` :
+            `${DEVICE_SIZES[selectedDevice ?? internalDevice].width} × ${DEVICE_SIZES[selectedDevice ?? internalDevice].height}`
           }
         </div>
       )}

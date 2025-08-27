@@ -1,0 +1,81 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { and, desc, eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import { chatMessages, chatSessions } from '@/db/schema';
+
+// Helper: find or create a chat session for a project
+async function getOrCreateSession(db: ReturnType<typeof getDb>, projectId: string) {
+  const existing = await db.select().from(chatSessions).where(eq(chatSessions.projectId, projectId)).limit(1);
+  if (existing.length > 0) return existing[0];
+  const [created] = await db.insert(chatSessions).values({ projectId }).returning();
+  return created;
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const projectId = req.nextUrl.searchParams.get('projectId');
+    if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+
+    const db = getDb();
+    const session = await getOrCreateSession(db, projectId);
+
+    const rows = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.sessionId, session.id))
+      .orderBy(desc(chatMessages.createdAt));
+
+    // Return in chronological order
+    const messages = [...rows].reverse().map((r) => ({ id: r.messageId, role: r.role, content: r.content as unknown }));
+    return NextResponse.json({ sessionId: session.id, messages });
+  } catch (err) {
+    console.error('GET /api/chat failed:', err);
+    return NextResponse.json({ error: 'Failed to fetch chat' }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { projectId, message } = body as { projectId?: string; message?: { id: string; role: string; content: unknown } };
+    if (!projectId || !message?.id || !message?.role) {
+      return NextResponse.json({ error: 'projectId and full message are required' }, { status: 400 });
+    }
+    const db = getDb();
+    const session = await getOrCreateSession(db, projectId);
+
+    // Check for existing message by original message id
+    const existing = await db
+      .select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.sessionId, session.id), eq(chatMessages.messageId, message.id)))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(chatMessages).values({
+        sessionId: session.id,
+        messageId: message.id,
+        role: message.role,
+        content: message.content as object,
+      });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/chat failed:', err);
+    return NextResponse.json({ error: 'Failed to save message' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const projectId = req.nextUrl.searchParams.get('projectId');
+    if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    const db = getDb();
+    const session = await getOrCreateSession(db, projectId);
+    await db.delete(chatMessages).where(eq(chatMessages.sessionId, session.id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/chat failed:', err);
+    return NextResponse.json({ error: 'Failed to reset chat' }, { status: 500 });
+  }
+}
+

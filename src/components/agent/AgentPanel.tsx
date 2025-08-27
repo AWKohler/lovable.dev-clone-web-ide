@@ -3,18 +3,52 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { Button } from '@/components/ui/button';
+import { Markdown } from '@/components/ui/markdown';
+import { ChevronDown, ChevronRight, Wrench, ArrowUp } from 'lucide-react';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
 
-type Props = { className?: string };
+type Props = { className?: string; projectId: string };
 
-export function AgentPanel({ className }: Props) {
+function ToolCard({ title, meta, content, defaultOpen = false }: { title: string; meta?: string; content: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-border rounded-lg bg-soft">
+      <div className="flex items-center justify-between px-3 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2 text-sm">
+          <Wrench size={14} className="text-accent" />
+          <span className="font-medium text-fg">{title}</span>
+          {meta && <span className="text-muted">{meta}</span>}
+        </div>
+        {open ? <ChevronDown size={14} className="text-muted" /> : <ChevronRight size={14} className="text-muted" />}
+      </div>
+      {open && <div className="px-3 pb-3">{content}</div>}
+    </div>
+  );
+}
+
+export function AgentPanel({ className, projectId }: Props) {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const savedIdsRef = useRef<Set<string>>(new Set());
+  const [initialized, setInitialized] = useState(false);
 
-  const { messages, input, handleInputChange, handleSubmit, addToolResult, stop, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, addToolResult, stop, isLoading, setMessages } = useChat({
     api: '/api/agent',
-    onFinish: () => setBusy(false),
+    async onFinish(message) {
+      // Persist final assistant message (complete content, including any tool-calls)
+      try {
+        await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, message }),
+        });
+        savedIdsRef.current.add(message.id);
+      } catch (err) {
+        console.error('Failed to persist assistant message:', err);
+      }
+      setBusy(false);
+    },
     onError: () => setBusy(false),
     async onToolCall({ toolCall }) {
       try {
@@ -76,6 +110,56 @@ export function AgentPanel({ className }: Props) {
     },
   });
 
+  // Load initial chat history
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`);
+        if (!res.ok) throw new Error('Failed to load chat');
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data?.messages)) {
+          setMessages(data.messages);
+          // Initialize saved id set to avoid re-saving
+          const ids = new Set<string>();
+          for (const m of data.messages) ids.add(m.id);
+          savedIdsRef.current = ids;
+        }
+      } catch (err) {
+        console.warn('No existing chat or failed to load:', err);
+      } finally {
+        if (!cancelled) setInitialized(true);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, setMessages]);
+
+  // Persist new messages from user/tool/etc. Skip assistant here (saved on onFinish to avoid partials)
+  useEffect(() => {
+    async function persistNewMessages() {
+      for (const m of messages) {
+        if (!savedIdsRef.current.has(m.id) && m.role !== 'assistant') {
+          try {
+            await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ projectId, message: m }),
+            });
+            savedIdsRef.current.add(m.id);
+          } catch (err) {
+            console.error('Failed to persist message:', err);
+          }
+        }
+      }
+    }
+    // Avoid running before we’ve loaded existing history
+    if (initialized) void persistNewMessages();
+  }, [messages, projectId, initialized]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -89,8 +173,29 @@ export function AgentPanel({ className }: Props) {
   );
 
   return (
-    <div className={cn('flex h-full flex-col text-sm', className)}>
-      <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 pr-1">
+    <div className={cn('flex h-full flex-col text-sm bg-surface text-fg', className)}>
+      <div className="flex items-center justify-between bolt-border border-b px-3 py-3 bg-soft">
+        <div className="text-xs uppercase tracking-wide text-muted">Agent</div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={async () => {
+            const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
+            if (!confirmed) return;
+            try {
+              await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+              savedIdsRef.current.clear();
+              setMessages([]);
+            } catch (err) {
+              console.error('Failed to reset chat:', err);
+            }
+          }}
+        >
+          Reset
+        </Button>
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 p-3 modern-scrollbar">
         {messages.map((m) => {
           type TextPart = { type: 'text'; text: string };
           type ToolCallPart = { type: 'tool-call'; toolCall: unknown };
@@ -99,29 +204,56 @@ export function AgentPanel({ className }: Props) {
 
           const content = (m as { content: unknown }).content;
           return (
-            <div key={m.id} className={cn('rounded-md px-2 py-2', m.role === 'user' ? 'bg-slate-800/80' : 'bg-slate-900/60') }>
-              <div className="text-xs mb-1 text-slate-400 uppercase tracking-wide">{m.role}</div>
+            <div key={m.id} className={cn('rounded-lg px-3 py-3 border border-border', m.role === 'user' ? 'bg-accent/10' : 'bg-elevated') }>
+              <div className="text-[11px] mb-1 text-muted uppercase tracking-wide">{m.role}</div>
               {Array.isArray(content) ? (
                 (content as UiPart[]).map((part, i: number) => {
                   if ((part as TextPart).type === 'text' && typeof (part as TextPart).text === 'string') {
-                    return <p key={i} className="whitespace-pre-wrap leading-relaxed">{(part as TextPart).text}</p>;
+                    return <Markdown key={i} content={(part as TextPart).text} />;
                   }
                   if ((part as ToolCallPart).type === 'tool-call') {
-                    return <pre key={i} className="text-xs overflow-auto bg-black/30 p-2 rounded">{JSON.stringify((part as ToolCallPart).toolCall, null, 2)}</pre>;
+                    const t = (part as ToolCallPart).toolCall as any;
+                    const meta = t?.toolName ? `• ${t.toolName}` : undefined;
+                    return (
+                      <ToolCard
+                        key={i}
+                        title="Tool Call"
+                        meta={meta}
+                        content={
+                          <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">
+                            {JSON.stringify(t?.args ?? t, null, 2)}
+                          </pre>
+                        }
+                      />
+                    );
                   }
                   if ((part as DataPart).type === 'data') {
-                    return <pre key={i} className="text-xs overflow-auto bg-black/30 p-2 rounded">{JSON.stringify((part as DataPart).data, null, 2)}</pre>;
+                    const data = (part as DataPart).data as any;
+                    return (
+                      <ToolCard
+                        key={i}
+                        title="Tool Result"
+                        content={
+                          typeof data === 'string' ? (
+                            <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border whitespace-pre-wrap">{data}</pre>
+                          ) : (
+                            <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">{JSON.stringify(data, null, 2)}</pre>
+                          )
+                        }
+                        defaultOpen={false}
+                      />
+                    );
                   }
-                  return <pre key={i} className="text-xs overflow-auto bg-black/30 p-2 rounded">{JSON.stringify(part, null, 2)}</pre>;
+                  return <pre key={i} className="text-xs overflow-auto bg-soft p-2 rounded border border-border">{JSON.stringify(part, null, 2)}</pre>;
                 })
               ) : (
-                <p className="whitespace-pre-wrap leading-relaxed">{String(content ?? '')}</p>
+                <Markdown content={String(content ?? '')} />
               )}
             </div>
           );
         })}
         {isLoading && (
-          <div className="text-xs text-slate-400">Thinking…</div>
+          <div className="text-xs text-muted">Thinking…</div>
         )}
       </div>
 
@@ -130,25 +262,39 @@ export function AgentPanel({ className }: Props) {
           setBusy(true);
           handleSubmit(e);
         }}
-        className="mt-2 flex gap-2"
+        className="mt-2"
       >
-        <input
-          className="flex-1 rounded-md bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600"
-          placeholder={placeholder}
-          value={input}
-          onChange={handleInputChange}
-          disabled={busy}
-        />
-        <Button type="submit" size="sm" disabled={busy}>
-          Send
-        </Button>
+        <div className="relative rounded-2xl border border-border bg-soft px-4 py-4">
+          <input
+            className="w-full bg-transparent text-base outline-none placeholder:text-muted"
+            placeholder={placeholder}
+            value={input}
+            onChange={handleInputChange}
+            disabled={busy}
+          />
+          <div className="absolute right-3 bottom-3 flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={busy || !input.trim()}
+              className={cn(
+                'h-8 w-8 rounded-full flex items-center justify-center shadow-sm',
+                busy || !input.trim() ? 'bg-muted/30 text-muted cursor-not-allowed' : 'bg-accent text-accent-foreground hover:bg-accent/90'
+              )}
+              title="Send"
+            >
+              <ArrowUp size={16} />
+            </button>
+          </div>
+        </div>
         {busy && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => { stop(); setBusy(false); }}>
-            Stop
-          </Button>
+          <div className="mt-2 flex justify-end">
+            <Button type="button" size="sm" variant="ghost" onClick={() => { stop(); setBusy(false); }}>
+              Stop
+            </Button>
+          </div>
         )}
       </form>
-      <div className="mt-1 text-[11px] text-slate-500">
+      <div className="mt-1 text-[11px] text-muted">
         Tip: For edits, I apply diffs with SEARCH/REPLACE blocks. If a block fails to match, I’ll ask for a corrected diff.
       </div>
     </div>

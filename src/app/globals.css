@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Sand/Tan Design Tokens (Light) */
+  --sand-bg: #f3ebdf;
+  --sand-surface: #f8f1e6;
+  --sand-elevated: #efe2cf;
+  --sand-soft: #e9dbc5;
+  --sand-border: #e1d4be;
+  --sand-text: #2f2a24;
+  --sand-text-muted: #6f655b;
+  --sand-accent: #c07a4c;
+  --sand-accent-contrast: #ffffff;
+  --sand-overlay: rgba(47, 42, 36, 0.05);
+
+  /* App Layout Vars */
+  --background: var(--sand-bg);
+  --foreground: var(--sand-text);
   --workbench-width: 75vw;
   --workbench-left: 25vw;
   --workbench-inner-width: calc(100vw - var(--workbench-left));
@@ -12,27 +25,49 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-bg: var(--sand-bg);
+  --color-fg: var(--sand-text);
+  --color-muted: var(--sand-text-muted);
+  --color-surface: var(--sand-surface);
+  --color-elevated: var(--sand-elevated);
+  --color-soft: var(--sand-soft);
+  --color-border: var(--sand-border);
+  --color-accent: var(--sand-accent);
+  --color-accent-foreground: var(--sand-accent-contrast);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Night Sand (Dark) */
+    --sand-bg: #1d1a16;
+    --sand-surface: #23201b;
+    --sand-elevated: #2b2722;
+    --sand-soft: #2a251f;
+    --sand-border: #3a342e;
+    --sand-text: #ede6db;
+    --sand-text-muted: #b8ada1;
+    --sand-accent: #d89b6a;
+    --sand-accent-contrast: #1b1713;
+    --sand-overlay: rgba(237, 230, 219, 0.07);
+
+    --background: var(--sand-bg);
+    --foreground: var(--sand-text);
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 /* Custom scrollbar styles */
 .modern-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #64748b #1e293b;
+  scrollbar-color: var(--sand-text-muted) var(--sand-soft);
 }
 
 .modern-scrollbar::-webkit-scrollbar {
@@ -40,35 +75,36 @@ body {
 }
 
 .modern-scrollbar::-webkit-scrollbar-track {
-  background: #1e293b;
-  border-radius: 4px;
+  background: var(--sand-soft);
+  border-radius: 6px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb {
-  background: #64748b;
-  border-radius: 4px;
+  background: color-mix(in oklab, var(--sand-text-muted) 80%, transparent);
+  border-radius: 6px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: color-mix(in oklab, var(--sand-text-muted) 95%, transparent);
 }
 
-/* Bolt-inspired color scheme */
+/* Dune-inspired scheme (keeps class names for minimal churn) */
 .bolt-bg {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  background: radial-gradient(1000px 600px at 20% -10%, color-mix(in oklab, var(--sand-accent) 12%, transparent), transparent),
+              radial-gradient(900px 500px at 120% 10%, color-mix(in oklab, var(--sand-accent) 10%, transparent), transparent),
+              linear-gradient(135deg, var(--sand-bg) 0%, var(--sand-surface) 100%);
 }
 
 .bolt-border {
-  border-color: #334155;
+  border-color: var(--sand-border);
 }
 
 .bolt-hover {
-  transition: all 0.2s ease-in-out;
+  transition: all 0.18s ease-in-out;
 }
 
 .bolt-hover:hover {
-  background-color: #334155;
-  transform: translateY(-1px);
+  background-color: color-mix(in oklab, var(--sand-elevated) 80%, var(--sand-overlay));
 }
 
 /* Animation classes */
@@ -92,12 +128,9 @@ body {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
 }
 
-.monaco-editor .margin {
-  background-color: #0f172a !important;
-}
-
+.monaco-editor .margin,
 .monaco-editor .monaco-editor-background {
-  background-color: #0f172a !important;
+  background-color: var(--sand-elevated) !important;
 }
 
 /* Terminal styles */

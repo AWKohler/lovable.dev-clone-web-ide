@@ -22,10 +22,10 @@ export function Terminal({ webcontainer }: TerminalProps) {
     // Initialize xterm.js
     const terminal = new XTerm({
       theme: {
-        background: '#0f172a', // slate-900
-        foreground: '#e2e8f0', // slate-200
-        cursor: '#3b82f6', // blue-500
-        selectionBackground: '#1e40af40', // blue-700 with opacity
+        background: getComputedStyle(document.documentElement).getPropertyValue('--sand-elevated').trim() || '#2b2722',
+        foreground: getComputedStyle(document.documentElement).getPropertyValue('--sand-text').trim() || '#ede6db',
+        cursor: '#c07a4c',
+        selectionBackground: '#c07a4c40',
       },
       fontSize: 14,
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
@@ -125,14 +125,14 @@ export function Terminal({ webcontainer }: TerminalProps) {
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-slate-900">
-      <div className="h-8 bg-slate-800 border-b border-slate-700 flex items-center px-3">
+    <div className="h-full flex flex-col bg-elevated">
+      <div className="h-8 bg-soft border-b border-border flex items-center px-3">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+          <div className="w-3 h-3 rounded-full bg-red-400"></div>
+          <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+          <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
         </div>
-        <span className="ml-4 text-sm text-slate-400">Terminal</span>
+        <span className="ml-4 text-sm text-muted">Terminal</span>
       </div>
       <div
         ref={terminalRef}

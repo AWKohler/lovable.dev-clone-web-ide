@@ -5,13 +5,14 @@ import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
 import { FileTree } from './file-tree';
+import { FileSearch } from './file-search';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { CodeEditor } from './code-editor';
 import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw, Play, Square, Loader2 } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw, Play, Square, Loader2, ArrowUpRight, Monitor, Tablet, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import '@/lib/debug-storage'; // Make debug utilities available in console
 
@@ -28,12 +29,17 @@ export function Workspace({ projectId }: WorkspaceProps) {
   const [fileContent, setFileContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'agent'>('files');
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'search'>('files');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('code');
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  // Preview UI state lifted to combine headers
+  const [previewPath, setPreviewPath] = useState<string>('/');
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [previewLandscape, setPreviewLandscape] = useState(false);
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -801,59 +807,25 @@ export function cn(...inputs: ClassValue[]) {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-900">
-        <div className="text-white">Loading WebContainer...</div>
+      <div className="h-screen flex items-center justify-center bg-bg">
+        <div className="text-muted">Loading WebContainer...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex bolt-bg text-white">
-      {/* Sidebar - Only show in code view */}
-      {showSidebar && currentView === 'code' && (
-        <div className="w-80 bolt-border border-r flex flex-col bg-slate-800/50 backdrop-blur-sm">
-          <div className="p-2 bolt-border border-b">
-            <Tabs
-              options={[
-                { value: 'files', text: 'Files' },
-                { value: 'agent', text: 'Agent' },
-              ] as TabOption<'files' | 'agent'>[]}
-              selected={sidebarTab}
-              onSelect={(v) => setSidebarTab(v as 'files' | 'agent')}
-            />
-          </div>
-          <div className="flex-1 overflow-auto modern-scrollbar">
-            {sidebarTab === 'files' ? (
-              <FileTree 
-                files={files}
-                selectedFile={selectedFile}
-                onFileSelect={handleFileSelect}
-              />
-            ) : (
-              <div className="p-2 h-full">
-                <AgentPanel className="h-full" />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+    <div className="h-screen flex bolt-bg text-fg">
+      {/* Agent sidebar - persistent on the far left */}
+      <div className="w-96 bolt-border border-r flex flex-col bg-elevated/70 backdrop-blur-sm">
+        <AgentPanel className="h-full" projectId={projectId} />
+      </div>
+
+      {/* File explorer is now rendered within the Code tab content area */}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="h-12 bolt-border border-b flex items-center px-4 gap-4 bg-slate-800/30 backdrop-blur-sm">
-          {/* Sidebar toggle - Only in code view */}
-          {currentView === 'code' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="text-slate-400 hover:text-white bolt-hover"
-            >
-              <PanelLeft size={16} />
-            </Button>
-          )}
-
+        <div className="h-12 bolt-border border-b flex items-center px-4 gap-4 bg-soft/60 backdrop-blur-sm">
           {/* Tabs */}
           <Tabs
             options={[
@@ -890,25 +862,41 @@ export function cn(...inputs: ClassValue[]) {
                isDevServerRunning ? 'Stop' : 'Start'}
             </span>
           </Button>
+
+          {/* File explorer toggle - on the right side of Tabs and after Start/Stop */}
+          {currentView === 'code' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="text-muted hover:text-fg bolt-hover"
+              title={showSidebar ? 'Hide explorer' : 'Show explorer'}
+            >
+              <PanelLeft size={16} />
+            </Button>
+          )}
           
           {currentView === 'code' && selectedFile && (
-            <>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-400">/</span>
-                <span className="text-white font-medium bg-slate-700/50 px-2 py-1 rounded flex items-center gap-2">
-                  {selectedFile.split('/').pop()}
-                  {hasUnsavedChanges && (
-                    <span className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved changes" />
-                  )}
-                </span>
-              </div>
-              <div className="ml-auto flex gap-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted">/</span>
+              <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
+                {selectedFile.split('/').pop()}
+                {hasUnsavedChanges && (
+                  <span className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved changes" />
+                )}
+              </span>
+            </div>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {currentView === 'code' ? (
+              <>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleRefreshFiles}
                   disabled={isRefreshing}
-                  className="text-slate-400 hover:text-white bolt-hover"
+                  className="text-muted hover:text-fg bolt-hover"
                 >
                   <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
                   <span className="ml-1">Refresh</span>
@@ -917,15 +905,68 @@ export function cn(...inputs: ClassValue[]) {
                   variant="ghost"
                   size="sm"
                   onClick={handleSaveFile}
-                  className="text-slate-400 hover:text-white bolt-hover"
+                  className="text-muted hover:text-fg bolt-hover"
                 >
                   <Save size={16} />
                   <span className="ml-1">Save</span>
                 </Button>
-                
-              </div>
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                {previews.length > 1 && (
+                  <select
+                    className="text-sm bg-elevated border border-border rounded-md px-2 py-1 text-muted"
+                    value={activePreviewIndex}
+                    onChange={(e) => setActivePreviewIndex(Number(e.target.value))}
+                    title="Select preview port"
+                  >
+                    {previews.map((p, i) => (
+                      <option key={p.port} value={i}>Port {p.port}</option>
+                    ))}
+                  </select>
+                )}
+
+                <div className="flex items-center gap-2 bg-soft border border-border rounded-full px-3 py-1 min-w-[220px]">
+                  {/* Device toggle: cycles desktop → tablet → mobile */}
+                  <button
+                    onClick={() => setPreviewDevice(prev => prev === 'desktop' ? 'tablet' : prev === 'tablet' ? 'mobile' : 'desktop')}
+                    className="text-muted hover:text-fg"
+                    title={`Device: ${previewDevice}`}
+                  >
+                    {previewDevice === 'desktop' && <Monitor size={16} />}
+                    {previewDevice === 'tablet' && <Tablet size={16} />}
+                    {previewDevice === 'mobile' && <Smartphone size={16} />}
+                  </button>
+                  <span className="text-muted text-sm select-none">/</span>
+                  <input
+                    type="text"
+                    value={previewPath.replace(/^\//, '')}
+                    onChange={(e) => setPreviewPath('/' + e.target.value.replace(/^\//, ''))}
+                    placeholder=""
+                    className="flex-1 bg-transparent text-sm outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      const p = previews[activePreviewIndex];
+                      if (p) window.open(p.baseUrl + (previewPath || '/'), '_blank');
+                    }}
+                    className="text-muted hover:text-fg"
+                    title="Open in new tab"
+                  >
+                    <ArrowUpRight size={16} />
+                  </button>
+                  <button
+                    onClick={() => setPreviewReloadKey(k => k + 1)}
+                    className="text-muted hover:text-fg"
+                    title="Reload preview"
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                </div>
+
+              </>
+            )}
+          </div>
         </div>
 
         {/* Content Area */}
@@ -937,20 +978,54 @@ export function cn(...inputs: ClassValue[]) {
               currentView === 'code' ? "flex flex-col" : "hidden"
             )}
           >
-            {/* Code Editor */}
-            <div className="flex-1 min-h-0 relative">
-              <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm">
-                <CodeEditor
-                  value={fileContent}
-                  onChange={handleContentChange}
-                  language={getLanguageFromFilename(selectedFile || '')}
-                  filename={selectedFile}
-                />
+            {/* Editor row with optional file explorer within the Code tab */}
+            <div className="flex-1 min-h-0 flex">
+              {showSidebar && (
+                <div className="w-80 bolt-border border-r flex flex-col bg-surface backdrop-blur-sm">
+                  <div className="p-2 bolt-border border-b">
+                    <Tabs
+                      options={[
+                        { value: 'files', text: 'Files' },
+                        { value: 'search', text: 'Search' },
+                      ] as TabOption<'files' | 'search'>[]}
+                      selected={sidebarTab}
+                      onSelect={(v) => setSidebarTab(v as 'files' | 'search')}
+                    />
+                  </div>
+                  <div className="flex-1 overflow-auto modern-scrollbar">
+                    {sidebarTab === 'files' ? (
+                      <FileTree 
+                        files={files}
+                        selectedFile={selectedFile}
+                        onFileSelect={handleFileSelect}
+                      />
+                    ) : (
+                      <FileSearch
+                        files={files}
+                        webcontainer={webcontainer}
+                        onOpenFile={(path) => {
+                          setCurrentView('code');
+                          handleFileSelect(path);
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 min-h-0 relative">
+                <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
+                  <CodeEditor
+                    value={fileContent}
+                    onChange={handleContentChange}
+                    language={getLanguageFromFilename(selectedFile || '')}
+                    filename={selectedFile}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Terminal - Always mounted, persists across tab switches */}
-            <div className="h-64 bolt-border border-t bg-slate-900/95 backdrop-blur-sm">
+            <div className="h-64 bolt-border border-t bg-elevated backdrop-blur-sm">
               <TerminalTabs webcontainer={webcontainer} />
             </div>
           </div>
@@ -966,6 +1041,11 @@ export function cn(...inputs: ClassValue[]) {
               previews={previews}
               activePreviewIndex={activePreviewIndex}
               onActivePreviewChange={setActivePreviewIndex}
+              showHeader={false}
+              currentPath={previewPath}
+              selectedDevice={previewDevice}
+              isLandscape={previewLandscape}
+              reloadKey={previewReloadKey}
             />
           </div>
         </div>

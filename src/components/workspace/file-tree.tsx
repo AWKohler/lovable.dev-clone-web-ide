@@ -56,8 +56,8 @@ export function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
         <div
           key={filePath}
           className={cn(
-            'flex items-center cursor-pointer hover:bg-slate-700/50 px-2 py-1 text-sm bolt-hover',
-            isSelected && !isFolder && 'bg-blue-600/80 hover:bg-blue-600 shadow-lg',
+            'flex items-center cursor-pointer hover:bg-elevated/60 px-2 py-1 text-sm bolt-hover',
+            isSelected && !isFolder && 'bg-accent/20 hover:bg-accent/25 shadow-sm',
             'transition-all duration-200 rounded-md mx-1'
           )}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -72,14 +72,14 @@ export function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
           {isFolder ? (
             <>
               {isExpanded ? (
-                <ChevronDown size={14} className="mr-1 text-slate-400" />
+                <ChevronDown size={14} className="mr-1 text-muted" />
               ) : (
-                <ChevronRight size={14} className="mr-1 text-slate-400" />
+                <ChevronRight size={14} className="mr-1 text-muted" />
               )}
               {isExpanded ? (
-                <FolderOpen size={16} className="mr-2 text-blue-400" />
+                <FolderOpen size={16} className="mr-2 text-accent" />
               ) : (
-                <Folder size={16} className="mr-2 text-blue-400" />
+                <Folder size={16} className="mr-2 text-accent" />
               )}
             </>
           ) : (
@@ -90,7 +90,7 @@ export function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
           )}
           <span className={cn(
             'truncate',
-            isSelected && !isFolder ? 'text-white' : 'text-slate-300'
+            isSelected && !isFolder ? 'text-fg' : 'text-muted'
           )}>
             {name}
           </span>
@@ -102,22 +102,22 @@ export function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
   };
 
   return (
-    <div className="p-2">
+    <div className="p-2 text-fg">
       <div
-        className="flex items-center cursor-pointer hover:bg-slate-700/50 px-2 py-1 text-sm rounded-md bolt-hover"
+        className="flex items-center cursor-pointer hover:bg-elevated/60 px-2 py-1 text-sm rounded-md bolt-hover"
         onClick={() => toggleFolder('/')}
       >
         {expandedFolders.has('/') ? (
-          <ChevronDown size={14} className="mr-1 text-slate-400" />
+          <ChevronDown size={14} className="mr-1 text-muted" />
         ) : (
-          <ChevronRight size={14} className="mr-1 text-slate-400" />
+          <ChevronRight size={14} className="mr-1 text-muted" />
         )}
         {expandedFolders.has('/') ? (
-          <FolderOpen size={16} className="mr-2 text-blue-400" />
+          <FolderOpen size={16} className="mr-2 text-accent" />
         ) : (
-          <Folder size={16} className="mr-2 text-blue-400" />
+          <Folder size={16} className="mr-2 text-accent" />
         )}
-        <span className="text-slate-300">Project</span>
+        <span className="text-muted">Project</span>
       </div>
       {expandedFolders.has('/') && renderFileTree()}
     </div>
@@ -149,7 +149,7 @@ function FileIcon({ filename }: { filename: string }) {
       case 'rb':
         return 'text-red-400';
       default:
-        return 'text-slate-400';
+        return 'text-muted';
     }
   };
 

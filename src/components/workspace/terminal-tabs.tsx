@@ -41,9 +41,9 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
   }, [activeTerminal, terminalCount]);
 
   return (
-    <div className={cn("h-full flex flex-col bg-slate-900", className)}>
+    <div className={cn("h-full flex flex-col bg-elevated", className)}>
       {/* Terminal Tabs Header */}
-      <div className="flex items-center bg-slate-800 border-b border-slate-700 px-2 py-1 gap-1">
+      <div className="flex items-center bg-soft border-b border-border px-2 py-1 gap-1">
         {Array.from({ length: terminalCount }, (_, index) => (
           <button
             key={index}
@@ -51,8 +51,8 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-all",
               activeTerminal === index
-                ? "bg-slate-700 text-white"
-                : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                ? "bg-elevated text-fg"
+                : "text-muted hover:text-fg hover:bg-elevated/60"
             )}
           >
             <TerminalIcon size={14} />
@@ -63,7 +63,7 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
                   e.stopPropagation();
                   closeTerminal(index);
                 }}
-                className="text-slate-500 hover:text-red-400 p-0.5 rounded"
+                className="text-muted hover:text-red-400 p-0.5 rounded"
               >
                 <X size={12} />
               </button>
@@ -76,7 +76,7 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
             variant="ghost"
             size="sm"
             onClick={addTerminal}
-            className="text-slate-400 hover:text-white h-auto py-1"
+            className="text-muted hover:text-fg h-auto py-1"
           >
             <Plus size={14} />
           </Button>
