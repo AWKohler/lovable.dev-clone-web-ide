@@ -7,6 +7,9 @@ import { Markdown } from '@/components/ui/markdown';
 import { ChevronDown, ChevronRight, Wrench, ArrowUp } from 'lucide-react';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
+import { LiveActions } from '@/components/agent/LiveActions';
+import type { ToolCallData } from '@/lib/agent/ui-types';
+import { diffLineStats } from '@/lib/agent/diff-stats';
 
 type Props = { className?: string; projectId: string };
 
@@ -32,6 +35,7 @@ export function AgentPanel({ className, projectId }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
+  const [actions, setActions] = useState<ToolCallData[]>([]);
 
   const { messages, input, handleInputChange, handleSubmit, addToolResult, stop, isLoading, setMessages } = useChat({
     api: '/api/agent',
@@ -53,6 +57,17 @@ export function AgentPanel({ className, projectId }: Props) {
     async onToolCall({ toolCall }) {
       try {
         const args = toolCall.args as Record<string, unknown>;
+        // Ephemeral: record tool invocation
+        setActions((prev) => [
+          ...prev,
+          {
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            args,
+            status: 'invoked',
+            startedAt: Date.now(),
+          },
+        ]);
         switch (toolCall.toolName) {
           case 'listFiles': {
             console.log("list files called")
@@ -61,21 +76,46 @@ export function AgentPanel({ className, projectId }: Props) {
               Boolean(args.recursive)
             );
             await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: 'success',
+              finishedAt: Date.now(),
+              resultPreview: out.slice(0, 400),
+            }) : a));
             break;
           }
           case 'readFile': {
             console.log("read files called")
             const out = await WebContainerAgent.readFile(String(args.path ?? ''));
             await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: 'success',
+              finishedAt: Date.now(),
+              resultPreview: out.slice(0, 400),
+            }) : a));
             break;
           }
           case 'applyDiff': {
             console.log("apply diff called")
-            const res = await WebContainerAgent.applyDiff(
-              String(args.path ?? ''),
-              String(args.diff ?? '')
-            );
+            const path = String(args.path ?? '');
+            const diff = String(args.diff ?? '');
+            // Capture before content for UI
+            let before = '';
+            try { before = await WebContainerAgent.readFile(path); } catch {}
+            const res = await WebContainerAgent.applyDiff(path, diff);
+            // Capture after content for UI (only if ok)
+            let after = before;
+            try { after = await WebContainerAgent.readFile(path); } catch {}
+            const stats = diffLineStats(before, after);
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: res.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              fileChange: { filePath: path, before, after, additions: stats.additions, deletions: stats.deletions },
+              resultPreview: res.message,
+            }) : a));
             break;
           }
           case 'searchFiles': {
@@ -88,6 +128,12 @@ export function AgentPanel({ className, projectId }: Props) {
               results.push(r);
             }
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(results) });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: 'success',
+              finishedAt: Date.now(),
+              resultPreview: `${results.length} matches`,
+            }) : a));
             break;
           }
           case 'executeCommand': {
@@ -99,6 +145,12 @@ export function AgentPanel({ className, projectId }: Props) {
               combined += chunk;
             }
             await addToolResult({ toolCallId: toolCall.toolCallId, result: combined });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: 'success',
+              finishedAt: Date.now(),
+              resultPreview: combined.slice(0, 400),
+            }) : a));
             break;
           }
         }
@@ -106,6 +158,12 @@ export function AgentPanel({ className, projectId }: Props) {
         console.error('Tool error', err);
         const message = err instanceof Error ? err.message : String(err);
         await addToolResult({ toolCallId: toolCall.toolCallId, result: `Tool execution failed: ${message}` });
+        setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+          ...a,
+          status: 'error',
+          finishedAt: Date.now(),
+          resultPreview: message,
+        }) : a));
       }
     },
   });
@@ -257,6 +315,10 @@ export function AgentPanel({ className, projectId }: Props) {
         {isLoading && (
           <div className="text-xs text-muted">Thinking…</div>
         )}
+        <LiveActions
+          actions={actions}
+          onClear={() => setActions([])}
+        />
       </div>
 
       <form
