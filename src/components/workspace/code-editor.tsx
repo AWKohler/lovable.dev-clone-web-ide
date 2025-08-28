@@ -1,7 +1,7 @@
 'use client';
 
-import { Editor, OnMount, BeforeMount } from '@monaco-editor/react';
-import { useEffect, useMemo, useState } from 'react';
+import { Editor, BeforeMount } from '@monaco-editor/react';
+import { useEffect, useState } from 'react';
 
 interface CodeEditorProps {
   value: string;

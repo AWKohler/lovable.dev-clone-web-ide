@@ -12,8 +12,6 @@ type Props = {
 };
 
 export function LiveActions({ actions, onClear, className }: Props) {
-  if (!actions.length) return null;
-
   const fileActions = actions.filter((a) => Boolean(a.fileChange));
   const totals = useMemo(() => (
     fileActions.reduce(
@@ -34,6 +32,8 @@ export function LiveActions({ actions, onClear, className }: Props) {
     if (!el) return;
     el.scrollTop = el.scrollHeight; // jump to bottom
   }, [actions.length]);
+
+  if (!actions.length) return null;
 
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-2', className)}>

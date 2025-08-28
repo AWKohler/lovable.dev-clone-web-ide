@@ -38,7 +38,7 @@ export function Workspace({ projectId }: WorkspaceProps) {
   // Preview UI state lifted to combine headers
   const [previewPath, setPreviewPath] = useState<string>('/');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [previewLandscape, setPreviewLandscape] = useState(false);
+  const [previewLandscape] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);

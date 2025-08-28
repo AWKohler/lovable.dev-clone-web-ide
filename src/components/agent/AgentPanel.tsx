@@ -188,7 +188,7 @@ export function AgentPanel({ className, projectId }: Props) {
           for (const m of data.messages) ids.add(m.id);
           savedIdsRef.current = ids;
           // Seed assistant hash to avoid immediate redundant upsert
-          const lastAssistant = [...data.messages].reverse().find((m: any) => m.role === 'assistant');
+          const lastAssistant = [...data.messages].reverse().find((m) => m.role === 'assistant');
           if (lastAssistant) {
             try {
               lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify(lastAssistant.content).slice(-512) };
@@ -315,7 +315,7 @@ export function AgentPanel({ className, projectId }: Props) {
                     return <Markdown key={i} content={(part as TextPart).text} />;
                   }
                   if ((part as ToolCallPart).type === 'tool-call') {
-                    const t = (part as ToolCallPart).toolCall as any;
+                    const t = (part as ToolCallPart).toolCall as { toolName?: string; args?: unknown };
                     const meta = t?.toolName ? `• ${t.toolName}` : undefined;
                     return (
                       <ToolCard
@@ -331,7 +331,7 @@ export function AgentPanel({ className, projectId }: Props) {
                     );
                   }
                   if ((part as DataPart).type === 'data') {
-                    const data = (part as DataPart).data as any;
+                    const data = (part as DataPart).data;
                     return (
                       <ToolCard
                         key={i}

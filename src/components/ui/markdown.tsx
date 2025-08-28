@@ -2,7 +2,6 @@
 
 import React from 'react';
 
-type Node = string | React.ReactNode;
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -65,7 +64,7 @@ export function Markdown({ content }: { content: string }) {
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
-      const Tag: any = `h${level}`;
+      const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
       out.push(<Tag key={`h-${key++}`} className="font-semibold mt-3 mb-1">{renderInline(heading[2], `h${key}`)}</Tag>);
       i++;
       continue;
