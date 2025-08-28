@@ -843,7 +843,7 @@ export function cn(...inputs: ClassValue[]) {
             onClick={handlePlayStopClick}
             disabled={isInstalling || isStartingServer}
             className={cn(
-              "flex items-center gap-2 font-medium",
+              "flex items-center gap-2 font-bold text-md",
               isDevServerRunning
                 ? "text-red-400 hover:text-red-300 hover:bg-red-400/10"
                 : "text-green-400 hover:text-green-300 hover:bg-green-400/10"

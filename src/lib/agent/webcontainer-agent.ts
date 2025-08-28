@@ -103,17 +103,31 @@ export const WebContainerAgent = {
   },
 
   async *executeCommand(command: string, args: string[]): AsyncGenerator<string> {
+    // Ensure completion even for commands that produce no output (e.g., rmdir).
     const container = await this.getContainer();
     const proc = await container.spawn(command, args);
+
     const reader = proc.output.getReader();
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) yield value;
+    let combined = '';
+
+    // Drain output concurrently while we wait for process exit
+    const drain = (async () => {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) combined += value;
+        }
+      } finally {
+        reader.releaseLock();
       }
-    } finally {
-      reader.releaseLock();
-    }
+    })();
+
+    const exitCode = await proc.exit; // Wait for command to finish
+    await drain; // Ensure all output consumed
+
+    // Yield once with the full output so tool call can complete
+    const final = combined.trim().length > 0 ? combined : `Command exited with code ${exitCode}`;
+    yield final;
   },
 };

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, Wrench, ArrowUp } from 'lucide-react';
+import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX } from 'lucide-react';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -36,6 +36,8 @@ export function AgentPanel({ className, projectId }: Props) {
   const savedIdsRef = useRef<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
+  // Track last-saved assistant payload to allow streaming upserts
+  const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
 
   const { messages, input, handleInputChange, handleSubmit, addToolResult, stop, isLoading, setMessages } = useChat({
     api: '/api/agent',
@@ -138,6 +140,8 @@ export function AgentPanel({ className, projectId }: Props) {
           }
           case 'executeCommand': {
             console.log("execute command called")
+            console.log(args.command)
+            console.log(args.args)
             let combined = '';
             const cmd = String(args.command ?? '');
             const cmdArgs = Array.isArray(args.args) ? (args.args as unknown[]).map(String) : [];
@@ -183,6 +187,15 @@ export function AgentPanel({ className, projectId }: Props) {
           const ids = new Set<string>();
           for (const m of data.messages) ids.add(m.id);
           savedIdsRef.current = ids;
+          // Seed assistant hash to avoid immediate redundant upsert
+          const lastAssistant = [...data.messages].reverse().find((m: any) => m.role === 'assistant');
+          if (lastAssistant) {
+            try {
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify(lastAssistant.content).slice(-512) };
+            } catch {
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: String(lastAssistant.content) };
+            }
+          }
         }
       } catch (err) {
         console.warn('No existing chat or failed to load:', err);
@@ -196,11 +209,33 @@ export function AgentPanel({ className, projectId }: Props) {
     };
   }, [projectId, setMessages]);
 
-  // Persist new messages from user/tool/etc. Skip assistant here (saved on onFinish to avoid partials)
+  // Persist new messages from user/tool/etc. Also upsert assistant progressively.
   useEffect(() => {
     async function persistNewMessages() {
       for (const m of messages) {
-        if (!savedIdsRef.current.has(m.id) && m.role !== 'assistant') {
+        // Progressive upsert for assistant so refreshes preserve context
+        if (m.role === 'assistant') {
+          const hash = (() => {
+            try { return JSON.stringify(m.content).slice(-512); } catch { return String(m.content); }
+          })();
+          const prev = lastAssistantSavedRef.current;
+          if (!prev || prev.id !== m.id || prev.hash !== hash) {
+            try {
+              await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, message: m }),
+              });
+              lastAssistantSavedRef.current = { id: m.id, hash };
+            } catch (err) {
+              console.error('Failed to upsert assistant message:', err);
+            }
+          }
+          continue;
+        }
+
+        // One-shot insert for non-assistant roles
+        if (!savedIdsRef.current.has(m.id)) {
           try {
             await fetch('/api/chat', {
               method: 'POST',
@@ -253,6 +288,7 @@ export function AgentPanel({ className, projectId }: Props) {
             try {
               await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
               savedIdsRef.current.clear();
+              lastAssistantSavedRef.current = null;
               setMessages([]);
             } catch (err) {
               console.error('Failed to reset chat:', err);
@@ -362,28 +398,38 @@ export function AgentPanel({ className, projectId }: Props) {
               <ChevronDown size={16} /> Chat
             </button> */}
             <div className="flex items-center gap-1">
-              <button
-                id="chatinput-send-message-button"
-                type="submit"
-                className={cn(
-                  'flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity duration-150 ease-out',
-                  busy || !input.trim() ? 'disabled:cursor-not-allowed disabled:opacity-50 opacity-50' : ''
-                )}
-                disabled={busy || !input.trim()}
-                title="Send"
-              >
-                <ArrowUp size={20} />
-              </button>
+              {busy ? (
+                <button
+                  id="chatinput-stop-button"
+                  type="button"
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 ease-out'
+                  )}
+                  onClick={() => { stop(); setBusy(false); }}
+                  title="Stop"
+                  aria-label="Stop"
+                >
+                  <IconX size={18} />
+                </button>
+              ) : (
+                <button
+                  id="chatinput-send-message-button"
+                  type="submit"
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity duration-150 ease-out',
+                    !input.trim() ? 'disabled:cursor-not-allowed disabled:opacity-50 opacity-50' : ''
+                  )}
+                  disabled={!input.trim()}
+                  title="Send"
+                  aria-label="Send"
+                >
+                  <ArrowUp size={20} />
+                </button>
+              )}
             </div>
           </div>
         </div>
-        {busy && (
-          <div className="mt-2 flex justify-end">
-            <Button type="button" size="sm" variant="ghost" onClick={() => { stop(); setBusy(false); }}>
-              Stop
-            </Button>
-          </div>
-        )}
+        {/* When busy, the stop control replaces the send button above */}
       </form>
       {/* <div className="mt-1 text-[11px] text-muted">
         Tip: For edits, I apply diffs with SEARCH/REPLACE blocks. If a block fails to match, I’ll ask for a corrected diff.

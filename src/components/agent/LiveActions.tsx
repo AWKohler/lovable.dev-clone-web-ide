@@ -64,7 +64,7 @@ export function LiveActions({ actions, onClear, className }: Props) {
             <span className="mx-1"> </span>
             <span className="text-red-500">-{totals.deletions}</span>
           </div>
-          <span className="text-muted text-xs">View changes below</span>
+          <span className="text-muted text-xs">View changes above</span>
         </div>
       )}
     </div>

@@ -44,20 +44,23 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const session = await getOrCreateSession(db, projectId);
 
-    // Check for existing message by original message id
-    const existing = await db
-      .select()
-      .from(chatMessages)
-      .where(and(eq(chatMessages.sessionId, session.id), eq(chatMessages.messageId, message.id)))
-      .limit(1);
-    if (existing.length === 0) {
-      await db.insert(chatMessages).values({
+    // Upsert by (sessionId, messageId) so we can update the assistant
+    // message multiple times during streaming without creating duplicates.
+    await db
+      .insert(chatMessages)
+      .values({
         sessionId: session.id,
         messageId: message.id,
         role: message.role,
         content: message.content as object,
+      })
+      .onConflictDoUpdate({
+        target: [chatMessages.sessionId, chatMessages.messageId],
+        set: {
+          role: message.role,
+          content: message.content as object,
+        },
       });
-    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('POST /api/chat failed:', err);
@@ -78,4 +81,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to reset chat' }, { status: 500 });
   }
 }
-
