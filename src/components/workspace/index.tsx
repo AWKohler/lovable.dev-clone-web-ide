@@ -816,7 +816,7 @@ export function cn(...inputs: ClassValue[]) {
   return (
     <div className="h-screen flex bolt-bg text-fg">
       {/* Agent sidebar - persistent on the far left */}
-      <div className="w-96 bolt-border border-r flex flex-col bg-elevated/70 backdrop-blur-sm">
+      <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm">
         <AgentPanel className="h-full" projectId={projectId} />
       </div>
 
@@ -825,7 +825,7 @@ export function cn(...inputs: ClassValue[]) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="h-12 bolt-border border-b flex items-center px-4 gap-4 bg-soft/60 backdrop-blur-sm">
+        <div className="h-12 flex items-center pr-4 gap-4 bg-surface backdrop-blur-sm">
           {/* Tabs */}
           <Tabs
             options={[
@@ -926,7 +926,7 @@ export function cn(...inputs: ClassValue[]) {
                   </select>
                 )}
 
-                <div className="flex items-center gap-2 bg-soft border border-border rounded-full px-3 py-1 min-w-[220px]">
+                <div className="flex items-center gap-2 border border-border rounded-full px-3 py-1 min-w-[220px]">
                   {/* Device toggle: cycles desktop → tablet → mobile */}
                   <button
                     onClick={() => setPreviewDevice(prev => prev === 'desktop' ? 'tablet' : prev === 'tablet' ? 'mobile' : 'desktop')}
@@ -970,18 +970,19 @@ export function cn(...inputs: ClassValue[]) {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-h-0 relative">
+        <div className="flex-1 min-h-0 relative bg-surface">
           {/* Code View - Always mounted but conditionally visible */}
           <div 
             className={cn(
               "absolute inset-0",
-              currentView === 'code' ? "flex flex-col" : "hidden"
+              currentView === 'code' ? "flex flex-col" : "hidden",
+              "rounded-xl border border-border overflow-hidden"
             )}
+            // No extra padding here; padding is preserved as before in children
           >
-            {/* Editor row with optional file explorer within the Code tab */}
             <div className="flex-1 min-h-0 flex">
               {showSidebar && (
-                <div className="w-80 bolt-border border-r flex flex-col bg-surface backdrop-blur-sm">
+                <div className="w-80 bolt-border border-r flex flex-col backdrop-blur-sm">
                   <div className="p-2 bolt-border border-b">
                     <Tabs
                       options={[
@@ -1029,11 +1030,10 @@ export function cn(...inputs: ClassValue[]) {
               <TerminalTabs webcontainer={webcontainer} />
             </div>
           </div>
-
           {/* Preview View - Always mounted but conditionally visible */}
           <div 
             className={cn(
-              "absolute inset-0",
+              "absolute inset-0 pb-2.5 pr-2.5",
               currentView === 'preview' ? "block" : "hidden"
             )}
           >
@@ -1049,6 +1049,93 @@ export function cn(...inputs: ClassValue[]) {
             />
           </div>
         </div>
+ 
+  
+
+        {/* Content Area */}
+        {/* <div className="flex-1 min-h-0 relative bg-surface"> */}
+          {/* Code View - Always mounted but conditionally visible */}
+            {/* <div 
+            className={cn(
+              "absolute inset-0 pb-2.5 pr-2.5",
+              currentView === 'code' ? "flex flex-col" : "hidden"
+            )}
+          >
+            <div className="flex-1 min-h-0 flex">
+              {showSidebar && (
+                <div className="w-80 bolt-border border-r flex flex-col backdrop-blur-sm">
+                  <div className="p-2 bolt-border border-b">
+                    <Tabs
+                      options={[
+                        { value: 'files', text: 'Files' },
+                        { value: 'search', text: 'Search' },
+                      ] as TabOption<'files' | 'search'>[]}
+                      selected={sidebarTab}
+                      onSelect={(v) => setSidebarTab(v as 'files' | 'search')}
+                    />
+                  </div>
+                  <div className="flex-1 overflow-auto modern-scrollbar">
+                    {sidebarTab === 'files' ? (
+                      <FileTree 
+                        files={files}
+                        selectedFile={selectedFile}
+                        onFileSelect={handleFileSelect}
+                      />
+                    ) : (
+                      <FileSearch
+                        files={files}
+                        webcontainer={webcontainer}
+                        onOpenFile={(path) => {
+                          setCurrentView('code');
+                          handleFileSelect(path);
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 min-h-0 relative">
+                <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
+                  <CodeEditor
+                    value={fileContent}
+                    onChange={handleContentChange}
+                    language={getLanguageFromFilename(selectedFile || '')}
+                    filename={selectedFile}
+                  />
+                </div>
+              </div>
+            </div> */}
+
+            {/* Terminal - Always mounted, persists across tab switches */}
+            {/* <div className="h-64 bolt-border border-t bg-elevated backdrop-blur-sm">
+              <TerminalTabs webcontainer={webcontainer} />
+            </div> */}
+            {/* </div> */}
+{/* 
+            
+          </div> */}
+          {/* </div> */}
+
+          {/* Preview View - Always mounted but conditionally visible */}
+          {/* <div 
+            className={cn(
+              "absolute inset-0 pb-2.5 pr-2.5",
+              currentView === 'preview' ? "block" : "hidden"
+            )}
+          >
+            <Preview
+              previews={previews}
+              activePreviewIndex={activePreviewIndex}
+              onActivePreviewChange={setActivePreviewIndex}
+              showHeader={false}
+              currentPath={previewPath}
+              selectedDevice={previewDevice}
+              isLandscape={previewLandscape}
+              reloadKey={previewReloadKey}
+            />
+          </div>
+        </div> */}
+
       </div>
     </div>
   );

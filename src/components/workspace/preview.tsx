@@ -107,24 +107,24 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
 
   if (!activePreview) {
     return (
-      <div className="h-full flex items-center justify-center bg-elevated text-muted">
+      <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
         <div className="text-center">
           <div className="text-4xl mb-4">🚀</div>
           <h3 className="text-lg font-medium mb-2">No Preview Available</h3>
           <p className="text-sm">Start a development server to see a live preview</p>
-          <p className="text-xs mt-2 text-muted">
+          {/* <p className="text-xs mt-2 text-muted">
             Try running: <code className="bg-elevated px-1 rounded border border-border">pnpm dev</code>
-          </p>
+          </p> */}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-elevated">
+    <div className="h-full flex flex-col bg-surface rounded-xl border border-border">
       {/* Preview Header (optional) */}
       {showHeader && (
-      <div className="flex items-center gap-2 p-3 bg-soft border-b border-border">
+      <div className="flex items-center gap-2 p-3 border-b border-border">
         {/* Controls */}
         <Button
           variant="ghost"
@@ -248,11 +248,11 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
       )}
 
       {/* Preview Content */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-auto bg-elevated">
+      <div className="flex-1 flex items-center justify-center overflow-auto">
         <div 
           className={cn(
-            "bg-surface rounded-lg overflow-hidden shadow-2xl border border-border",
-            (selectedDevice ?? internalDevice) !== 'desktop' && "border-8 border-soft"
+            "bg-surface overflow-hidden rounded-xl",
+            (selectedDevice ?? internalDevice) !== 'desktop' && ""
           )}
           style={getIframeStyles()}
         >

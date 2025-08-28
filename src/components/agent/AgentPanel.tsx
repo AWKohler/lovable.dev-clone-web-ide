@@ -168,13 +168,15 @@ export function AgentPanel({ className, projectId }: Props) {
 
   const placeholder = useMemo(
     () =>
-      'Ask me to inspect files, propose changes as diffs, run dev, etc. For edits, I use SEARCH/REPLACE blocks.',
+            // 'Ask me to inspect files, propose changes as diffs, run dev, etc. For edits, I use SEARCH/REPLACE blocks.',
+
+      'Ask Huggable...',
     []
   );
 
   return (
-    <div className={cn('flex h-full flex-col text-sm bg-surface text-fg', className)}>
-      <div className="flex items-center justify-between bolt-border border-b px-3 py-3 bg-soft">
+    <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
+      <div className="flex items-center justify-between px-3 py-2 bg-surface">
         <div className="text-xs uppercase tracking-wide text-muted">Agent</div>
         <Button
           type="button"
@@ -204,8 +206,8 @@ export function AgentPanel({ className, projectId }: Props) {
 
           const content = (m as { content: unknown }).content;
           return (
-            <div key={m.id} className={cn('rounded-lg px-3 py-3 border border-border', m.role === 'user' ? 'bg-accent/10' : 'bg-elevated') }>
-              <div className="text-[11px] mb-1 text-muted uppercase tracking-wide">{m.role}</div>
+            <div key={m.id} className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight', m.role === 'user' ? 'bg-elevated' : '') }>
+              {/* <div className="text-[11px] mb-1 text-muted uppercase tracking-wide">{m.role}</div> */}
               {Array.isArray(content) ? (
                 (content as UiPart[]).map((part, i: number) => {
                   if ((part as TextPart).type === 'text' && typeof (part as TextPart).text === 'string') {
@@ -262,28 +264,48 @@ export function AgentPanel({ className, projectId }: Props) {
           setBusy(true);
           handleSubmit(e);
         }}
-        className="mt-2"
+        className="group flex flex-col gap-2 rounded-2xl border border-border bg-elevated p-4 transition-colors duration-150 ease-in-out relative mt-2"
       >
-        <div className="relative rounded-2xl border border-border bg-soft px-4 py-4">
-          <input
-            className="w-full bg-transparent text-base outline-none placeholder:text-muted"
-            placeholder={placeholder}
-            value={input}
-            onChange={handleInputChange}
-            disabled={busy}
-          />
-          <div className="absolute right-3 bottom-3 flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={busy || !input.trim()}
-              className={cn(
-                'h-8 w-8 rounded-full flex items-center justify-center shadow-sm',
-                busy || !input.trim() ? 'bg-muted/30 text-muted cursor-not-allowed' : 'bg-accent text-accent-foreground hover:bg-accent/90'
-              )}
-              title="Send"
-            >
-              <ArrowUp size={16} />
-            </button>
+        <div data-state="closed" style={{ cursor: 'text' }}>
+          <div className="relative flex flex-1 items-center">
+            <textarea
+              className="flex w-full ring-offset-background placeholder:text-muted focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0"
+              id="chatinput"
+              placeholder={placeholder}
+              maxLength={50000}
+              style={{ minHeight: 40, height: 40 }}
+              value={input}
+              onChange={handleInputChange}
+              disabled={busy}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {/* File upload input, hidden for now */}
+          <input id="file-upload" className="hidden" accept="image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp" multiple tabIndex={-1} type="file" style={{ border: 0, clip: 'rect(0px, 0px, 0px, 0px)', clipPath: 'inset(50%)', height: 1, margin: '0px -1px -1px 0px', overflow: 'hidden', padding: 0, position: 'absolute', width: 1, whiteSpace: 'nowrap' }} />
+          {/* Example tool button, not functional here */}
+          {/* <button type="button" className="flex size-6 items-center justify-center rounded-full border border-border text-muted outline-none duration-150 ease-out shrink-0 transition-colors hover:bg-muted-hover" tabIndex={-1}>
+            <ChevronRight size={16} />
+          </button> */}
+          <div className="ml-auto flex items-center gap-1">
+            {/* Chat button, not functional here */}
+            {/* <button type="button" className="items-center justify-center whitespace-nowrap text-sm transition-colors duration-100 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-elevated shadow-sm px-3 flex h-6 gap-1 rounded-full border py-0 pl-1.5 pr-2.5 font-normal text-muted border-border hover:bg-transparent md:hover:bg-accent md:hover:text-muted-foreground" tabIndex={-1}>
+              <ChevronDown size={16} /> Chat
+            </button> */}
+            <div className="flex items-center gap-1">
+              <button
+                id="chatinput-send-message-button"
+                type="submit"
+                className={cn(
+                  'flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity duration-150 ease-out',
+                  busy || !input.trim() ? 'disabled:cursor-not-allowed disabled:opacity-50 opacity-50' : ''
+                )}
+                disabled={busy || !input.trim()}
+                title="Send"
+              >
+                <ArrowUp size={20} />
+              </button>
+            </div>
           </div>
         </div>
         {busy && (
@@ -294,9 +316,9 @@ export function AgentPanel({ className, projectId }: Props) {
           </div>
         )}
       </form>
-      <div className="mt-1 text-[11px] text-muted">
+      {/* <div className="mt-1 text-[11px] text-muted">
         Tip: For edits, I apply diffs with SEARCH/REPLACE blocks. If a block fails to match, I’ll ask for a corrected diff.
-      </div>
+      </div> */}
     </div>
   );
 }

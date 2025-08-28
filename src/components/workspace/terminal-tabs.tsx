@@ -43,7 +43,7 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
   return (
     <div className={cn("h-full flex flex-col bg-elevated", className)}>
       {/* Terminal Tabs Header */}
-      <div className="flex items-center bg-soft border-b border-border px-2 py-1 gap-1">
+      <div className="flex items-center bg-elevated border-b border-border px-2 py-1 gap-1">
         {Array.from({ length: terminalCount }, (_, index) => (
           <button
             key={index}
@@ -51,8 +51,8 @@ export function TerminalTabs({ webcontainer, className }: TerminalTabsProps) {
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-all",
               activeTerminal === index
-                ? "bg-elevated text-fg"
-                : "text-muted hover:text-fg hover:bg-elevated/60"
+                ? "bg-surface text-fg"
+                : "text-muted hover:text-fg hover:bg-surface/60"
             )}
           >
             <TerminalIcon size={14} />

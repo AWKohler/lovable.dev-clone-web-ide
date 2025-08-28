@@ -76,7 +76,7 @@ export function FileSearch({ files, webcontainer, onOpenFile }: FileSearchProps)
   return (
     <div className="p-2 text-sm">
       <div className="mb-2">
-        <div className="flex items-center gap-2 bg-soft border border-border rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 bg-surface border border-border shadow rounded-lg px-3 py-2">
           <span className="text-muted">🔍</span>
           <input
             value={query}

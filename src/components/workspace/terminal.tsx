@@ -126,14 +126,14 @@ export function Terminal({ webcontainer }: TerminalProps) {
 
   return (
     <div className="h-full flex flex-col bg-elevated">
-      <div className="h-8 bg-soft border-b border-border flex items-center px-3">
+      {/* <div className="h-8 bg-soft border-b border-border flex items-center px-3">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-red-400"></div>
           <div className="w-3 h-3 rounded-full bg-amber-400"></div>
           <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
         </div>
-        <span className="ml-4 text-sm text-muted">Terminal</span>
-      </div>
+        <span className="ml-4 text-sm text-muted">Termin</span>
+      </div> */}
       <div
         ref={terminalRef}
         className="flex-1 p-2"

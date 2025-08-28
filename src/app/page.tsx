@@ -132,7 +132,7 @@ export default function Home() {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-fg mb-2">
-                Terminal
+                Terminall
               </h3>
               <p className="text-muted">
                 Integrated terminal powered by WebContainer for running commands
