@@ -224,6 +224,13 @@ export function AgentPanel({ className, projectId }: Props) {
     }
   }, [messages, isLoading]);
 
+  // Ensure LiveActions visibility stays pinned to the bottom as actions stream in
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [actions.length]);
+
   const placeholder = useMemo(
     () =>
             // 'Ask me to inspect files, propose changes as diffs, run dev, etc. For edits, I use SEARCH/REPLACE blocks.',

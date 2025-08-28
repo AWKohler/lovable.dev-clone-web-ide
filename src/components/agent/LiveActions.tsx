@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { ChevronDown, ChevronRight, FileText, Loader2 } from 'lucide-react';
@@ -15,15 +15,25 @@ export function LiveActions({ actions, onClear, className }: Props) {
   if (!actions.length) return null;
 
   const fileActions = actions.filter((a) => Boolean(a.fileChange));
-  const totals = fileActions.reduce(
-    (acc, a) => {
-      acc.files += 1;
-      acc.additions += a.fileChange!.additions;
-      acc.deletions += a.fileChange!.deletions;
-      return acc;
-    },
-    { files: 0, additions: 0, deletions: 0 }
-  );
+  const totals = useMemo(() => (
+    fileActions.reduce(
+      (acc, a) => {
+        acc.files += 1;
+        acc.additions += a.fileChange!.additions;
+        acc.deletions += a.fileChange!.deletions;
+        return acc;
+      },
+      { files: 0, additions: 0, deletions: 0 }
+    )
+  ), [fileActions]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Auto-scroll to bottom on new actions so latest is visible
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight; // jump to bottom
+  }, [actions.length]);
 
   return (
     <div className={cn('rounded-lg border border-border bg-elevated p-2 space-y-2', className)}>
@@ -40,9 +50,11 @@ export function LiveActions({ actions, onClear, className }: Props) {
         )}
       </div>
 
-      {actions.map((a) => (
-        <ActionRow key={a.toolCallId} action={a} />
-      ))}
+      <div ref={scrollRef} className="modern-scrollbar max-h-40 overflow-auto space-y-2 pr-1">
+        {actions.map((a) => (
+          <ActionRow key={a.toolCallId} action={a} />
+        ))}
+      </div>
 
       {totals.files > 0 && (
         <div className="mt-1 flex items-center justify-between rounded-md border border-border bg-soft px-3 py-2 text-sm">
@@ -65,13 +77,13 @@ function ActionRow({ action }: { action: ToolCallData }) {
   const isEdit = Boolean(action.fileChange);
 
   return (
-    <div className={cn('rounded-md border border-border bg-surface')}> 
+    <div className={cn('rounded-md border border-border bg-surface bolt-fade-in')}> 
       <button
         type="button"
         className="w-full flex items-center justify-between px-3 py-2 text-left"
         onClick={() => setOpen((v) => !v)}
       >
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm min-w-0">
           {loading ? (
             <Loader2 className="animate-spin text-muted" size={14} />
           ) : (
@@ -93,7 +105,7 @@ function ActionRow({ action }: { action: ToolCallData }) {
             </span>
           )}
           {!isEdit && action.resultPreview && (
-            <span className="truncate max-w-[240px] text-muted">{action.resultPreview}</span>
+            <span className="truncate max-w-[260px] text-muted">{action.resultPreview}</span>
           )}
         </div>
         {open ? (
@@ -107,7 +119,7 @@ function ActionRow({ action }: { action: ToolCallData }) {
           {isEdit ? (
             <FileChange before={action.fileChange!.before} after={action.fileChange!.after} />
           ) : (
-            <pre className="text-xs overflow-auto bg-soft p-2 rounded border border-border whitespace-pre-wrap">{action.resultPreview ?? ''}</pre>
+            <pre className="text-xs overflow-auto bg-soft p-2 pr-4 rounded border border-border whitespace-pre-wrap break-words">{action.resultPreview ?? ''}</pre>
           )}
         </div>
       )}
@@ -120,13 +132,12 @@ function FileChange({ before, after }: { before: string; after: string }) {
     <div className="grid grid-cols-2 gap-2">
       <div>
         <div className="text-xs mb-1 text-muted">Before</div>
-        <pre className="text-xs overflow-auto bg-soft p-2 rounded border border-border whitespace-pre">{before}</pre>
+        <pre className="text-xs overflow-auto bg-soft p-2 pr-4 rounded border border-border whitespace-pre">{before}</pre>
       </div>
       <div>
         <div className="text-xs mb-1 text-muted">After</div>
-        <pre className="text-xs overflow-auto bg-soft p-2 rounded border border-border whitespace-pre">{after}</pre>
+        <pre className="text-xs overflow-auto bg-soft p-2 pr-4 rounded border border-border whitespace-pre">{after}</pre>
       </div>
     </div>
   );
 }
-
