@@ -39,7 +39,7 @@ export function AgentPanel({ className, projectId }: Props) {
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
 
-  const { messages, input, handleInputChange, handleSubmit, addToolResult, stop, isLoading, setMessages } = useChat({
+  const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult } = useChat({
     api: '/api/agent',
     async onFinish(message) {
       // Persist final assistant message (complete content, including any tool-calls)
@@ -171,6 +171,9 @@ export function AgentPanel({ className, projectId }: Props) {
       }
     },
   });
+
+  // Convert status to isLoading for backward compatibility
+  const isLoading = status === 'streaming' || status === 'submitted';
 
   // Load initial chat history
   useEffect(() => {
