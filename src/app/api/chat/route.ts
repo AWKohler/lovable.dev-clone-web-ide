@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { chatMessages, chatSessions } from '@/db/schema';
+import { chatMessages, chatSessions, projects } from '@/db/schema';
+import { auth } from '@clerk/nextjs/server';
 
 // Helper: find or create a chat session for a project
 async function getOrCreateSession(db: ReturnType<typeof getDb>, projectId: string) {
@@ -13,10 +14,15 @@ async function getOrCreateSession(db: ReturnType<typeof getDb>, projectId: strin
 
 export async function GET(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const projectId = req.nextUrl.searchParams.get('projectId');
     if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
 
     const db = getDb();
+    // Ensure user owns the project
+    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
+    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
 
     const rows = await db
@@ -36,12 +42,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { projectId, message } = body as { projectId?: string; message?: { id: string; role: string; content: unknown } };
     if (!projectId || !message?.id || !message?.role) {
       return NextResponse.json({ error: 'projectId and full message are required' }, { status: 400 });
     }
     const db = getDb();
+    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
+    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
 
     // Upsert by (sessionId, messageId) so we can update the assistant
@@ -70,9 +80,13 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const projectId = req.nextUrl.searchParams.get('projectId');
     if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
     const db = getDb();
+    const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
+    if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
     await db.delete(chatMessages).where(eq(chatMessages.sessionId, session.id));
     return NextResponse.json({ ok: true });

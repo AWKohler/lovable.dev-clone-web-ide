@@ -20,9 +20,10 @@ type WorkspaceView = 'code' | 'preview';
 
 interface WorkspaceProps {
   projectId: string;
+  initialPrompt?: string;
 }
 
-export function Workspace({ projectId }: WorkspaceProps) {
+export function Workspace({ projectId, initialPrompt }: WorkspaceProps) {
   const [webcontainer, setWebcontainer] = useState<WebContainer | null>(null);
   const [files, setFiles] = useState<Record<string, { type: 'file' | 'folder' }>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -817,7 +818,7 @@ export function cn(...inputs: ClassValue[]) {
     <div className="h-screen flex bolt-bg text-fg">
       {/* Agent sidebar - persistent on the far left */}
       <div className="w-96 flex flex-col bg-elevated/70 backdrop-blur-sm">
-        <AgentPanel className="h-full" projectId={projectId} />
+        <AgentPanel className="h-full" projectId={projectId} initialPrompt={initialPrompt} />
       </div>
 
       {/* File explorer is now rendered within the Code tab content area */}

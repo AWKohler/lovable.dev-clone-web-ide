@@ -3,7 +3,7 @@ import { pgTable, uuid, timestamp, text, jsonb, uniqueIndex } from 'drizzle-orm/
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  description: text('description'),
+  userId: text('user_id').notNull(), // Clerk user id
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

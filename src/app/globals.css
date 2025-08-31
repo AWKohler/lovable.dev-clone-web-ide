@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@clerk/themes/shadcn.css";
 
 :root {
   /* Sand/Tan Design Tokens (Light) */
@@ -19,8 +20,7 @@
   --workbench-width: 75vw;
   --workbench-left: 25vw;
   --workbench-inner-width: calc(100vw - var(--workbench-left));
-  --header-height: 3rem;
-}
+  --header-height: 3rem;}
 
 @theme inline {
   --color-background: var(--background);
