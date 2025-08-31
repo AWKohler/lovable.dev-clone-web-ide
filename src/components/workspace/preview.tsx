@@ -24,6 +24,11 @@ interface PreviewProps {
   selectedDevice?: keyof typeof DEVICE_SIZES;
   isLandscape?: boolean;
   reloadKey?: number;
+  // Dev server control
+  isDevServerRunning?: boolean;
+  isInstalling?: boolean;
+  isStartingServer?: boolean;
+  onToggleDevServer?: () => void;
 }
 
 const DEVICE_SIZES = {
@@ -32,7 +37,7 @@ const DEVICE_SIZES = {
   mobile: { name: 'Mobile', width: 375, height: 667, icon: Smartphone },
 };
 
-export function Preview({ previews, activePreviewIndex, onActivePreviewChange, showHeader = true, currentPath, selectedDevice, isLandscape, reloadKey }: PreviewProps) {
+export function Preview({ previews, activePreviewIndex, onActivePreviewChange, showHeader = true, currentPath, selectedDevice, isLandscape, reloadKey, isDevServerRunning, isInstalling, isStartingServer, onToggleDevServer }: PreviewProps) {
   const [internalDevice, setInternalDevice] = useState<keyof typeof DEVICE_SIZES>('desktop');
   const [internalLandscape, setInternalLandscape] = useState(false);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
@@ -108,13 +113,40 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
   if (!activePreview) {
     return (
       <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
-        <div className="text-center">
-          <div className="text-4xl mb-4">🚀</div>
-          <h3 className="text-lg font-medium mb-2">No Preview Available</h3>
-          <p className="text-sm">Start a development server to see a live preview</p>
-          {/* <p className="text-xs mt-2 text-muted">
-            Try running: <code className="bg-elevated px-1 rounded border border-border">pnpm dev</code>
-          </p> */}
+        <div className="text-center max-w-md px-6">
+          <div className="text-4xl mb-3">🚀</div>
+          <h3 className="text-2xl font-semibold mb-2 text-fg tracking-tight">No Preview Yet</h3>
+          <p className="text-md mb-4 tracking-normal">
+            Start the development server to see your app here. We’ll open the first active port automatically and keep this preview in sync.
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onToggleDevServer}
+              disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-4',
+                isDevServerRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+              )}
+            >
+              {isInstalling || isStartingServer ? (
+                <>
+                  <span className="inline-flex h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  <span>{isInstalling ? 'Installing…' : 'Starting…'}</span>
+                </>
+              ) : isDevServerRunning ? (
+                <>
+                  <span>Stop Dev Server</span>
+                </>
+              ) : (
+                <>
+                  <span>Start Dev Server</span>
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-xs mt-3 text-muted">Equivalent command: <code className="bg-elevated px-1 rounded border border-border">pnpm dev</code></p>
         </div>
       </div>
     );

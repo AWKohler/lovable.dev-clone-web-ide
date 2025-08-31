@@ -15,7 +15,7 @@ interface TabsProps<T extends string> {
 export function Tabs<T extends string>({ options, selected, onSelect, className }: TabsProps<T>) {
   const single = options.length === 1;
   return (
-    <div className={cn("flex bg-white rounded-lg p-1 border border-border", single && "w-full", className)}>
+    <div className={cn("flex rounded-lg p-1 border border-border", single && "w-full", className)}>
       {options.map((option) => (
         <button
           key={option.value}

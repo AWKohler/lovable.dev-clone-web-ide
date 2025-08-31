@@ -172,6 +172,17 @@ export function AgentPanel({ className, projectId, initialPrompt }: Props) {
     },
   });
 
+  // Remove only the "prompt" query param from the URL without reloading
+  const removePromptFromUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('prompt')) {
+        url.searchParams.delete('prompt');
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch {}
+  };
+
   // Convert status to isLoading for backward compatibility
   const isLoading = status === 'streaming' || status === 'submitted';
 
@@ -266,6 +277,7 @@ export function AgentPanel({ className, projectId, initialPrompt }: Props) {
         // Call handleSubmit with a synthetic event
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         handleSubmit({ preventDefault() {} } as any);
+        removePromptFromUrl();
       }, 0);
     }
     if (scrollRef.current) {
@@ -382,6 +394,7 @@ export function AgentPanel({ className, projectId, initialPrompt }: Props) {
         onSubmit={(e) => {
           setBusy(true);
           handleSubmit(e);
+          removePromptFromUrl();
         }}
         className="group flex flex-col gap-2 rounded-2xl border border-border bg-elevated p-4 transition-colors duration-150 ease-in-out relative mt-2"
       >

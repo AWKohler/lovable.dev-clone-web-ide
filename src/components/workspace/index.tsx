@@ -12,7 +12,8 @@ import { TerminalTabs } from './terminal-tabs';
 import { Preview } from './preview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabOption } from '@/components/ui/tabs';
-import { PanelLeft, Save, RefreshCw, Play, Square, Loader2, ArrowUpRight, Monitor, Tablet, Smartphone } from 'lucide-react';
+import { PanelLeft, Save, RefreshCw, Play, Square, Loader2, ArrowUpRight, Monitor, Tablet, Smartphone, Github } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 import '@/lib/debug-storage'; // Make debug utilities available in console
 
@@ -33,7 +34,7 @@ export function Workspace({ projectId, initialPrompt }: WorkspaceProps) {
   const [sidebarTab, setSidebarTab] = useState<'files' | 'search'>('files');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [currentView, setCurrentView] = useState<WorkspaceView>('code');
+  const [currentView, setCurrentView] = useState<WorkspaceView>('preview');
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   // Preview UI state lifted to combine headers
@@ -826,12 +827,12 @@ export function cn(...inputs: ClassValue[]) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="h-12 flex items-center pr-4 gap-4 bg-surface backdrop-blur-sm">
+        <div className="h-12 flex items-center pr-2.5 gap-4 bg-surface backdrop-blur-sm">
           {/* Tabs */}
           <Tabs
             options={[
+              { value: 'preview', text: `Preview${previews.length > 0 ? ` (${previews.length})` : ''}` },
               { value: 'code', text: 'Code' },
-              { value: 'preview', text: `Preview${previews.length > 0 ? ` (${previews.length})` : ''}` }
             ] as TabOption<WorkspaceView>[]}
             selected={currentView}
             onSelect={setCurrentView}
@@ -886,13 +887,23 @@ export function cn(...inputs: ClassValue[]) {
                   <span className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved changes" />
                 )}
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSaveFile}
+                className="text-muted hover:text-fg bolt-hover"
+                title="Save file"
+              >
+                <Save size={16} />
+                <span className="ml-1">Save</span>
+              </Button>
             </div>
           )}
 
           <div className="ml-auto flex items-center gap-2">
             {currentView === 'code' ? (
               <>
-                <Button
+                {/* <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleRefreshFiles}
@@ -901,16 +912,7 @@ export function cn(...inputs: ClassValue[]) {
                 >
                   <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
                   <span className="ml-1">Refresh</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSaveFile}
-                  className="text-muted hover:text-fg bolt-hover"
-                >
-                  <Save size={16} />
-                  <span className="ml-1">Save</span>
-                </Button>
+                </Button> */}
               </>
             ) : (
               <>
@@ -964,9 +966,31 @@ export function cn(...inputs: ClassValue[]) {
                     <RefreshCw size={16} />
                   </button>
                 </div>
-
               </>
             )}
+            <UserButton
+              afterSignOutUrl="/"
+              appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8' } }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-8 p-0 aspect-square"
+              onClick={() => { /* TODO: connect GitHub */ }}
+              title="GitHub"
+            >
+              <Github size={16} />
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              className="font-bold text-sm"
+              onClick={() => {
+                // TODO: implement publish flow
+              }}
+            >
+              Publish
+            </Button>
           </div>
         </div>
 
@@ -1047,6 +1071,10 @@ export function cn(...inputs: ClassValue[]) {
               selectedDevice={previewDevice}
               isLandscape={previewLandscape}
               reloadKey={previewReloadKey}
+              isDevServerRunning={isDevServerRunning}
+              isInstalling={isInstalling}
+              isStartingServer={isStartingServer}
+              onToggleDevServer={handlePlayStopClick}
             />
           </div>
         </div>
