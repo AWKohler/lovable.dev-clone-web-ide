@@ -26,6 +26,7 @@ import {
   Github,
 } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
+import { SupabasePicker } from '@/components/supabase/SupabasePicker';
 import { cn } from '@/lib/utils';
 import '@/lib/debug-storage'; // Make debug utilities available in console
 
@@ -51,7 +52,6 @@ export function Workspace({
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'files' | 'search'>('files');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('preview');
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
@@ -181,19 +181,7 @@ export function Workspace({
     [fileContent],
   );
 
-  const handleRefreshFiles = useCallback(async () => {
-    if (!webcontainer) return;
-
-    setIsRefreshing(true);
-    try {
-      await refreshFileTree(webcontainer);
-      await WebContainerManager.saveProjectState(projectId);
-    } catch (error) {
-      console.error('Failed to refresh files:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [webcontainer, refreshFileTree, projectId]);
+  // Removed unused handleRefreshFiles function
 
   const handleFileSystemChange = useCallback(
     async (event: Event) => {
@@ -1380,6 +1368,7 @@ export function cn(...inputs: ClassValue[]) {
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8' } }}
             />
+            <SupabasePicker projectId={projectId} />
             <Button
               variant="outline"
               size="sm"

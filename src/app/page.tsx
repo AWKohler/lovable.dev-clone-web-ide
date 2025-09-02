@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 import { ArrowUp, Heart, Plus, Smartphone, Laptop } from 'lucide-react';
+import { SupabasePicker } from '@/components/supabase/SupabasePicker';
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<'web' | 'mobile'>('web');
+  const [supabaseRef, setSupabaseRef] = useState<string | null>(null);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
@@ -18,6 +20,7 @@ export default function Home() {
     if (prompt.trim()) params.set('prompt', prompt.trim());
     params.set('visibility', 'public');
     params.set('platform', platform);
+    if (supabaseRef) params.set('supabaseRef', supabaseRef);
     const target = `/start?${params.toString()}`;
     if (authed) {
       router.push(target);
@@ -58,7 +61,7 @@ export default function Home() {
 
               <div className="flex items-center gap-2">
                 <SignedOut>
-                  <SignInButton signInUrl="/sign-in">
+                  <SignInButton>
                     <button className="hidden sm:inline-flex items-center rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-medium text-neutral-900 shadow-sm hover:bg-neutral-50 transition">
                       Log in
                     </button>
@@ -124,6 +127,10 @@ export default function Home() {
                     )}
                     <span>{platform === 'web' ? 'Web' : 'Mobile App'}</span>
                   </button>
+                  {/* Supabase connect picker */}
+                  <div className="pointer-events-auto">
+                    <SupabasePicker onSelected={(ref) => setSupabaseRef(ref)} />
+                  </div>
                 </div>
 
                 {/* Send button */}

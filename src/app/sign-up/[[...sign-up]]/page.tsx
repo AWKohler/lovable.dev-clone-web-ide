@@ -1,7 +1,8 @@
 import { SignUp } from "@clerk/nextjs";
 
-export default function Page({ searchParams }: { searchParams: { redirect_url?: string } }) {
-  const redirectUrl = searchParams?.redirect_url ?? '/';
+export default async function Page({ searchParams }: { searchParams: Promise<{ redirect_url?: string }> }) {
+  const resolvedParams = await searchParams;
+  const redirectUrl = resolvedParams?.redirect_url ?? '/';
   return (
     <div className="min-h-screen flex items-center justify-center bg-white text-neutral-900 p-6">
       <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white shadow-sm p-6">

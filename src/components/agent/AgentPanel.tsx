@@ -274,17 +274,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       setInput(initialPrompt);
       // submit on next tick so input state is applied
       setTimeout(() => {
-        const form = document.createElement('form');
         // Call handleSubmit with a synthetic event
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        handleSubmit({ preventDefault() {} } as any);
+        handleSubmit({ preventDefault() {} } as React.FormEvent<HTMLFormElement>);
         removePromptFromUrl();
       }, 0);
     }
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, handleSubmit, initialPrompt, initialized, setInput]);
 
   // Ensure LiveActions visibility stays pinned to the bottom as actions stream in
   useEffect(() => {

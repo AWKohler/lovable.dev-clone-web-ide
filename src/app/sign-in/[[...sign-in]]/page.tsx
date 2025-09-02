@@ -1,8 +1,9 @@
 import Image from "next/image";
 import { SignIn } from "@clerk/nextjs";
 
-export default function Page({ searchParams }: { searchParams: { redirect_url?: string } }) {
-  const redirectUrl = searchParams?.redirect_url ?? "/";
+export default async function Page({ searchParams }: { searchParams: Promise<{ redirect_url?: string }> }) {
+  const resolvedParams = await searchParams;
+  const redirectUrl = resolvedParams?.redirect_url ?? "/";
 
   return (
     <div className="min-h-screen flex">

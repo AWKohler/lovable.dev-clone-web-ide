@@ -24,6 +24,7 @@
     "@xterm/xterm": "^5.5.0",
     "ai": "^4.0.18",
     "clsx": "^2.1.1",
+    "dotenv": "^17.2.1",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.4",
     "lucide-react": "^0.541.0",

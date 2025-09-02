@@ -1,6 +1,9 @@
 import { streamText, tool, type CoreMessage } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
+import { getDb } from '@/db';
+import { supabaseLinks } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const maxDuration = 60;
 
@@ -37,9 +40,32 @@ export async function POST(req: Request) {
       'Never use pnpm. Use npm i / npm exec expo start. Configure expo-router screens under app/.',
     ].join('\n');
 
+    // If this request is tied to a project, detect linked Supabase
+    let supabaseNote = '';
+    try {
+      if (projectId) {
+        const db = getDb();
+        const links = await db.select().from(supabaseLinks).where(eq(supabaseLinks.projectId, projectId));
+        const link = links[0];
+        if (link) {
+          supabaseNote = [
+            '',
+            'Supabase is connected to this project.',
+            `- URL: ${link.supabaseProjectUrl}`,
+            '- Features: database, auth, storage, edge functions available.',
+            '- Use supabase-js on server routes or server actions with the anon key.',
+            '- Inside WebContainer, you may install the CLI if needed (e.g., pnpm dlx supabase --help).',
+            '- Initialize any required config (e.g., supabase/config.toml) before running CLI commands.',
+          ].join('\n');
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read Supabase link for agent prompt:', e);
+    }
+
     const result = await streamText({
       model: openai('gpt-4.1'),
-      system: platform === 'mobile' ? systemPromptMobile : systemPromptWeb,
+      system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
       messages: messages as CoreMessage[],
       tools: {
         listFiles: tool({
