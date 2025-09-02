@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 
 type Org = { id: string; name?: string; slug?: string; raw?: Record<string, unknown> };
-type Project = { id: string; name?: string; organization_id?: string; ref?: string; raw?: Record<string, unknown> };
+type Project = { id: string; name?: string; organization_id?: string; ref?: string; created_at?: string; raw?: Record<string, unknown> };
 
 export function SupabasePicker({
   className,
@@ -16,11 +17,16 @@ export function SupabasePicker({
   projectId?: string; // When provided, selection persists by calling API
   onSelected?: (ref: string) => void; // For landing page to carry ref forward
 }) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [hoverOrg, setHoverOrg] = useState<string | null>(null);
   const [projects, setProjects] = useState<Record<string, Project[]>>({});
   const [loading, setLoading] = useState(false);
+  const [creatingOrgId, setCreatingOrgId] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const baselineIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -46,10 +52,83 @@ export function SupabasePicker({
       const res = await fetch(`/api/supabase/projects?org_id=${encodeURIComponent(orgId)}`);
       const data = await res.json();
       const mapped: Project[] = Array.isArray(data)
-        ? data.map((p: Record<string, unknown>) => ({ id: String(p.id || p.ref), name: String(p.name || ''), organization_id: String(p.organization_id || ''), ref: String(p.ref || ''), raw: p }))
+        ? data.map((p: Record<string, unknown>) => ({ id: String(p.id || p.ref), name: String(p.name || ''), organization_id: String(p.organization_id || ''), ref: String(p.ref || ''), created_at: String(p.created_at || ''), raw: p }))
         : [];
       setProjects((prev) => ({ ...prev, [orgId]: mapped }));
     } catch {}
+  };
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      window.clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+    baselineIdsRef.current = null;
+    setCreatingOrgId(null);
+  };
+
+  const pollForNewProject = async (org: Org, attemptsLeft: number) => {
+    if (!org.id || attemptsLeft <= 0) {
+      toast({ title: 'Not detected', description: 'New Supabase project was not detected. You can select it from the list once it appears.' });
+      return stopPolling();
+    }
+    try {
+      const res = await fetch(`/api/supabase/projects?org_id=${encodeURIComponent(org.id)}`, { cache: 'no-store' });
+      const data = await res.json();
+      const mapped: Project[] = Array.isArray(data)
+        ? data.map((p: Record<string, unknown>) => ({ id: String(p.id || p.ref), name: String(p.name || ''), organization_id: String(p.organization_id || ''), ref: String(p.ref || ''), created_at: String(p.created_at || ''), raw: p }))
+        : [];
+      const currentIds = new Set(mapped.map((p) => p.id));
+      const baseline = baselineIdsRef.current ?? new Set<string>();
+      // Find new ids not in baseline
+      const newOnes = [...currentIds].filter((id) => !baseline.has(id));
+      if (newOnes.length > 0) {
+        // Prefer the newest by created_at if available
+        let candidate: Project | undefined = mapped
+          .filter((p) => newOnes.includes(p.id))
+          .sort((a, b) => (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()))[0];
+        if (!candidate) candidate = mapped.find((p) => newOnes.includes(p.id));
+        const ref = candidate?.ref || candidate?.id;
+        if (ref) {
+          if (projectId) {
+            try {
+              await fetch('/api/supabase/connect-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, projectRef: ref, organizationId: org.id, organizationName: org.name || org.slug }),
+              });
+              toast({ title: 'Supabase linked', description: `${candidate?.name || ref} is now connected.` });
+            } catch (e) {
+              console.error('Auto-link Supabase project failed', e);
+              toast({ title: 'Link failed', description: 'Could not link the new project automatically.' });
+            }
+          }
+          onSelected?.(ref);
+          setOpen(false);
+          stopPolling();
+          return;
+        }
+      }
+    } catch {}
+    // schedule next attempt
+    pollRef.current = window.setTimeout(() => pollForNewProject(org, attemptsLeft - 1), 4000);
+  };
+
+  const beginCreateProjectFlow = async (org: Org) => {
+    // Always fetch a fresh baseline snapshot for reliability
+    try {
+      const res = await fetch(`/api/supabase/projects?org_id=${encodeURIComponent(org.id)}`, { cache: 'no-store' });
+      const data = await res.json();
+      const mapped: Project[] = Array.isArray(data)
+        ? data.map((p: Record<string, unknown>) => ({ id: String(p.id || p.ref), name: String(p.name || ''), organization_id: String(p.organization_id || ''), ref: String(p.ref || ''), created_at: String(p.created_at || ''), raw: p }))
+        : [];
+      baselineIdsRef.current = new Set(mapped.map((p) => p.id));
+    } catch {
+      baselineIdsRef.current = new Set((projects[org.id] || []).map((p) => p.id));
+    }
+    setCreatingOrgId(org.id);
+    // Start polling for up to ~2 minutes
+    pollForNewProject(org, 30);
   };
 
   const handlePick = async (org: Org, proj: Project) => {
@@ -62,8 +141,10 @@ export function SupabasePicker({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId, projectRef: ref, organizationId: org.id, organizationName: org.name || org.slug }),
         });
+        toast({ title: 'Supabase linked', description: `${proj.name || ref} is now connected.` });
       } catch (e) {
         console.error('Failed to connect Supabase project', e);
+        toast({ title: 'Link failed', description: 'Could not link the selected project.' });
       }
     }
     onSelected?.(ref);
@@ -72,8 +153,36 @@ export function SupabasePicker({
 
   const buttonLabel = useMemo(() => 'Supabase', []);
 
+  // Close on ESC and click outside while open
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        stopPolling();
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      const el = rootRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setOpen(false);
+        stopPolling();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) stopPolling();
+  }, [open]);
+
   return (
-    <div className={cn('relative', className)}>
+    <div ref={rootRef} className={cn('relative', className)}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
@@ -105,7 +214,7 @@ export function SupabasePicker({
                   <ChevronRight className="h-4 w-4 text-neutral-400" />
                 </div>
                 {hoverOrg === o.id && (
-                  <div className="absolute z-50 left-full top-0 ml-2 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
+                  <div className="absolute z-50 left-full -ml-px top-0 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
                     <div className="px-3 py-2">
                       <input
                         placeholder="Search projects..."
@@ -128,14 +237,24 @@ export function SupabasePicker({
                       )}
                     </div>
                     <div className="border-t border-black/10">
-                      <a
-                        className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50"
-                        href={`https://supabase.com/dashboard/new${o.slug ? `?org=${encodeURIComponent(o.slug)}` : ''}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50 text-left"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          // Open Supabase new-project page for this org
+                          const url = o.slug
+                            ? `https://supabase.com/dashboard/org/${encodeURIComponent(o.slug)}/new`
+                            : 'https://supabase.com/dashboard/new';
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                          // Start watching for the new project to appear and link automatically
+                          beginCreateProjectFlow(o);
+                        }}
                       >
                         <Plus className="h-4 w-4" /> Create project
-                      </a>
+                      </button>
+                      {creatingOrgId === o.id && (
+                        <div className="px-3 pb-2 text-xs text-neutral-500">Waiting for new project to be created…</div>
+                      )}
                     </div>
                   </div>
                 )}

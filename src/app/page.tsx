@@ -160,7 +160,7 @@ export default function Home() {
         </section>
 
         {/* Community Section (placeholder) */}
-        <section className="relative">
+        <section className="relative mt-96">
           <div className="mx-auto max-w-7xl px-6">
             <div className="rounded-3xl border border-black/10 bg-white shadow-sm">
               <div className="px-6 py-6 sm:px-8 sm:py-8">
