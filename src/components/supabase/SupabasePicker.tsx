@@ -87,7 +87,8 @@ export function SupabasePicker({
       {open && (
         <div className="absolute z-50 mt-2 w-72 rounded-xl border border-black/10 bg-white shadow-lg">
           <div className="px-3 py-2 text-xs font-medium text-neutral-500">Supabase Projects</div>
-          <div className="max-h-72 overflow-auto">
+          {/* Important: allow submenus to overflow this container for hover popouts */}
+          <div className="max-h-72 overflow-visible relative">
             {loading && <div className="px-3 py-2 text-sm text-neutral-500">Loading...</div>}
             {!loading && orgs.length === 0 && (
               <div className="px-3 py-2 text-sm text-neutral-500">No organizations connected</div>
@@ -104,7 +105,7 @@ export function SupabasePicker({
                   <ChevronRight className="h-4 w-4 text-neutral-400" />
                 </div>
                 {hoverOrg === o.id && (
-                  <div className="absolute left-full top-0 ml-2 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
+                  <div className="absolute z-50 left-full top-0 ml-2 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
                     <div className="px-3 py-2">
                       <input
                         placeholder="Search projects..."
@@ -154,4 +155,3 @@ export function SupabasePicker({
     </div>
   );
 }
-
