@@ -41,12 +41,23 @@ export const WebContainerAgent = {
     return container.fs.readFile(path, 'utf8');
   },
 
-  async applyDiff(path: string, diff: string): Promise<{ applied: number; failures: number } & (
+  async applyDiff(filePath: string, diff: string): Promise<{ applied: number; failures: number } & (
     | { ok: true; message: string }
     | { ok: false; message: string }
   )> {
     const container = await this.getContainer();
-    const original = await container.fs.readFile(path, 'utf8');
+    // Read existing content; if file doesn't exist, treat as empty so we can create it
+    let original = '';
+    try {
+      original = await container.fs.readFile(filePath, 'utf8');
+    } catch (err) {
+      const message = String(err ?? '');
+      if (!/ENOENT/.test(message)) {
+        throw err;
+      }
+      // ENOENT -> new file creation path; proceed with empty original
+      original = '';
+    }
     const blocks = parseSearchReplaceBlocks(diff);
     if (blocks.length === 0) {
       return { ok: false, applied: 0, failures: 0, message: 'No SEARCH/REPLACE blocks found in diff.' };
@@ -62,7 +73,16 @@ export const WebContainerAgent = {
         message: `No blocks applied. Ensure SEARCH matches exact current file. Preview near likely location:\n${preview}`,
       };
     }
-    await container.fs.writeFile(path, result.content);
+    // Ensure parent directory exists for new files
+    const lastSlash = filePath.lastIndexOf('/');
+    const dir = lastSlash > 0 ? filePath.slice(0, lastSlash) || '/' : '/';
+    try {
+      if (dir && dir !== '/') {
+        await container.fs.mkdir(dir, { recursive: true });
+      }
+    } catch {}
+
+    await container.fs.writeFile(filePath, result.content);
     await WebContainerManager.saveProjectState('default');
     return {
       ok: true,
@@ -103,28 +123,45 @@ export const WebContainerAgent = {
   },
 
   async *executeCommand(command: string, args: string[]): AsyncGenerator<string> {
-    // Ensure completion even for commands that produce no output (e.g., rmdir).
+    // Ensure completion even for commands that produce no output (e.g., rmdir),
+    // and guard against hanging streams by using a timeout and cancel.
     const container = await this.getContainer();
     const proc = await container.spawn(command, args);
 
     const reader = proc.output.getReader();
     let combined = '';
+    let reading = true;
 
     // Drain output concurrently while we wait for process exit
     const drain = (async () => {
       try {
-        while (true) {
+        while (reading) {
           const { value, done } = await reader.read();
           if (done) break;
           if (value) combined += value;
         }
+      } catch {
+        // ignore
       } finally {
-        reader.releaseLock();
+        try { reader.releaseLock(); } catch {}
       }
     })();
 
-    const exitCode = await proc.exit; // Wait for command to finish
-    await drain; // Ensure all output consumed
+    // Add a max timeout in case a command never exits cleanly (e.g., spinner processes)
+    const MAX_MS = 120_000; // 2 minutes default safety
+    const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(-1), MAX_MS));
+
+    const exitCode = await Promise.race([proc.exit, timeout]);
+    if (exitCode === -1) {
+      // Timed out; try to stop the process and finish draining
+      try { proc.kill(); } catch {}
+    }
+
+    // Give a short grace period for any final buffered output, then cancel reader
+    await new Promise((r) => setTimeout(r, 150));
+    reading = false;
+    try { await reader.cancel(); } catch {}
+    await drain; // Ensure the drain task finishes
 
     // Yield once with the full output so tool call can complete
     const final = combined.trim().length > 0 ? combined : `Command exited with code ${exitCode}`;

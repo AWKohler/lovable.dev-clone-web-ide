@@ -6,22 +6,40 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { messages }: { messages: unknown } = await req.json();
+    const { messages, projectId, platform }: { messages: unknown; projectId?: string; platform?: 'web' | 'mobile' } = await req.json();
+
+    const systemPromptWeb = [
+      'You are an expert in-browser coding agent operating inside a StackBlitz WebContainer.',
+      'ONLY modify files via tools. Use diff-based edits, never full-file rewrites.',
+      'For edits, return SEARCH/REPLACE blocks in the diff string. Each block must be:',
+      '<<<<<<< SEARCH',
+      '... exact, contiguous snippet from the current file ...',
+      '=======',
+      '... replacement text ...',
+      '>>>>>>> REPLACE',
+      'You may include multiple consecutive SEARCH/REPLACE blocks for a single file.',
+      'When acting across many files, plan to list+read in parallel, then write diffs in parallel.',
+    ].join('\n');
+
+    const systemPromptMobile = [
+      'You are an expert React Native (Expo) coding agent working in a WebContainer.',
+      'This project uses Expo Router. Use npm, NOT pnpm.',
+      'To start the dev server, we run: npm exec expo start --tunnel',
+      'ONLY modify files via tools. Use diff-based edits, never full-file rewrites.',
+      'For edits, return SEARCH/REPLACE blocks in the diff string. Each block must be:',
+      '<<<<<<< SEARCH',
+      '... exact, contiguous snippet from the current file ...',
+      '=======',
+      '... replacement text ...',
+      '>>>>>>> REPLACE',
+      'You may include multiple consecutive SEARCH/REPLACE blocks for a single file.',
+      'When acting across many files, plan to list+read in parallel, then write diffs in parallel.',
+      'Never use pnpm. Use npm i / npm exec expo start. Configure expo-router screens under app/.',
+    ].join('\n');
 
     const result = await streamText({
       model: openai('gpt-4.1'),
-      system: [
-        'You are an expert in-browser coding agent operating inside a StackBlitz WebContainer.',
-        'ONLY modify files via tools. Use diff-based edits, never full-file rewrites.',
-        'For edits, return SEARCH/REPLACE blocks in the diff string. Each block must be:',
-        '<<<<<<< SEARCH',
-        '... exact, contiguous snippet from the current file ...',
-        '=======',
-        '... replacement text ...',
-        '>>>>>>> REPLACE',
-        'You may include multiple consecutive SEARCH/REPLACE blocks for a single file.',
-        'When acting across many files, plan to list+read in parallel, then write diffs in parallel.',
-      ].join('\n'),
+      system: platform === 'mobile' ? systemPromptMobile : systemPromptWeb,
       messages: messages as CoreMessage[],
       tools: {
         listFiles: tool({

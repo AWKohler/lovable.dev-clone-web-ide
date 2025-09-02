@@ -37,6 +37,7 @@ async function run() {
       id uuid primary key default gen_random_uuid(),
       name text not null,
       user_id text not null,
+      platform text not null default 'web',
       created_at timestamp default now() not null,
       updated_at timestamp default now() not null
     );`;

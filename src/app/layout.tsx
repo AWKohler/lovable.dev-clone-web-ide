@@ -34,13 +34,17 @@ export default function RootLayout({
 
         elements: {
           
-              button: "!bg-[#f8f4ed] !text-[#1c1c1c] !fill-black",
+              button: "!bg-[var(--color-elevated)] !text-[var(--color-text)] !fill-black",
 
               cardBox: "!border-none !border-transparent !shadow-none !shadow-transparent",
 
               card: "!border-none !border-transparent !shadow-none !shadow-transparent",
 
               formButtonPrimary: "!bg-neutral-900 !text-white",
+
+              // formField__username: "!bg-[var(--color-elevated)]",
+
+
 
 
               
@@ -49,9 +53,8 @@ export default function RootLayout({
         // baseTheme: shadcn,
         // baseTheme: 'simple', 
         variables: {
-          
-          colorBackground: '#fcfbf8',
-        
+          // use the CSS variable that backs `bg-surface` so Clerk follows light/dark modes
+          colorBackground: 'var(--color-surface)',
         },
       }}
     >

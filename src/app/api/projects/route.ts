@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await request.json();
-    const { name } = body as { name?: string };
+    const { name, platform } = body as { name?: string; platform?: 'web' | 'mobile' };
 
     if (!name) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       .values({
         name,
         userId,
+        platform: platform === 'mobile' ? 'mobile' : 'web',
       })
       .returning();
 

@@ -4,19 +4,20 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
-import { ArrowUp, Globe, Heart, Lock, Plus } from 'lucide-react';
+import { ArrowUp, Heart, Plus, Smartphone, Laptop } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [platform, setPlatform] = useState<'web' | 'mobile'>('web');
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
   const start = (authed: boolean) => {
     const params = new URLSearchParams();
     if (prompt.trim()) params.set('prompt', prompt.trim());
-    params.set('visibility', visibility);
+    params.set('visibility', 'public');
+    params.set('platform', platform);
     const target = `/start?${params.toString()}`;
     if (authed) {
       router.push(target);
@@ -87,7 +88,7 @@ export default function Home() {
                   <Heart className="h-4 w-4 text-white" />
                 </span>
               </span>
-              Huggable
+              {/* Huggable */}
             </h1>
             <p className="mt-4 text-center text-neutral-600 text-base sm:text-lg">
               Create apps and websites by chatting with AI
@@ -112,15 +113,16 @@ export default function Home() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setVisibility(visibility === 'public' ? 'private' : 'public')}
+                    onClick={() => setPlatform(platform === 'web' ? 'mobile' : 'web')}
                     className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
+                    title="Toggle platform"
                   >
-                    {visibility === 'public' ? (
-                      <Globe className="h-4 w-4" />
+                    {platform === 'web' ? (
+                      <Laptop className="h-4 w-4" />
                     ) : (
-                      <Lock className="h-4 w-4" />
+                      <Smartphone className="h-4 w-4" />
                     )}
-                    <span>{visibility === 'public' ? 'Public' : 'Private'}</span>
+                    <span>{platform === 'web' ? 'Web' : 'Mobile App'}</span>
                   </button>
                 </div>
 

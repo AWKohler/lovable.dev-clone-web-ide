@@ -11,7 +11,7 @@ import { LiveActions } from '@/components/agent/LiveActions';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { diffLineStats } from '@/lib/agent/diff-stats';
 
-type Props = { className?: string; projectId: string; initialPrompt?: string };
+type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: 'web' | 'mobile' };
 
 function ToolCard({ title, meta, content, defaultOpen = false }: { title: string; meta?: string; content: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -30,7 +30,7 @@ function ToolCard({ title, meta, content, defaultOpen = false }: { title: string
   );
 }
 
-export function AgentPanel({ className, projectId, initialPrompt }: Props) {
+export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
@@ -39,8 +39,9 @@ export function AgentPanel({ className, projectId, initialPrompt }: Props) {
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
 
-  const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput } = useChat({
+  const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
     api: '/api/agent',
+    body: { projectId, platform },
     async onFinish(message) {
       // Persist final assistant message (complete content, including any tool-calls)
       try {

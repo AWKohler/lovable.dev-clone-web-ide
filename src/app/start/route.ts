@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const prompt = url.searchParams.get('prompt')?.slice(0, 4000) ?? '';
   const visibility = url.searchParams.get('visibility') ?? 'public';
+  const platform = (url.searchParams.get('platform') === 'mobile' ? 'mobile' : 'web') as 'web' | 'mobile';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url, signInUrl: '/sign-in' });
@@ -18,12 +19,13 @@ export async function GET(request: Request) {
     const name = prompt?.trim() ? prompt.slice(0, 48) : 'New Project';
     const [project] = await db
       .insert(projects)
-      .values({ name, userId })
+      .values({ name, userId, platform })
       .returning();
 
     // Redirect to workspace and pass starter prompt for auto-run
     const workspaceUrl = new URL(`${url.origin}/workspace/${project.id}`);
     if (prompt) workspaceUrl.searchParams.set('prompt', prompt);
+    workspaceUrl.searchParams.set('platform', platform);
     if (visibility) workspaceUrl.searchParams.set('visibility', visibility);
     return NextResponse.redirect(workspaceUrl);
   } catch (err) {
