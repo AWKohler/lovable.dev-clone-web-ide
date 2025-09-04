@@ -11,7 +11,6 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const session = await getSupabaseSession();
-    if (!session?.accessToken) return NextResponse.json({ error: 'Not connected to Supabase' }, { status: 400 });
 
     const body = await req.json();
     const { projectId, projectRef, organizationId, organizationName } = body as {
@@ -24,16 +23,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing projectId or projectRef' }, { status: 400 });
     }
 
-    const api = new SupabaseManagementAPI(session.accessToken);
-    const [keys, details] = await Promise.all([
-      api.getProjectApiKeys(projectRef),
-      api.getProject(projectRef),
-    ]);
-
-    const anonKey = Array.isArray(keys) ? keys.find((k: Record<string, unknown>) => k.name === 'anon')?.api_key as string : undefined;
-    const projectUrl = details?.ref ? `https://${details.ref}.supabase.co` : undefined;
-    if (!anonKey || !projectUrl) {
-      return NextResponse.json({ error: 'Failed to retrieve project credentials' }, { status: 500 });
+    let anonKey: string | null = null;
+    let projectUrl: string | undefined = undefined;
+    if (session?.accessToken) {
+      try {
+        const api = new SupabaseManagementAPI(session.accessToken);
+        const [keys, details] = await Promise.all([
+          api.getProjectApiKeys(projectRef),
+          api.getProject(projectRef),
+        ]);
+        anonKey = Array.isArray(keys)
+          ? (keys.find((k: Record<string, unknown>) => (k as any).name === 'anon')?.api_key as string | undefined) ?? null
+          : null;
+        projectUrl = (details as unknown as { ref?: string })?.ref
+          ? `https://${(details as unknown as { ref?: string }).ref}.supabase.co`
+          : undefined;
+      } catch (e) {
+        console.warn('Supabase Management API unavailable; linking without keys:', e);
+      }
+    }
+    if (!projectUrl) {
+      // Fallback compute from given ref
+      projectUrl = `https://${projectRef}.supabase.co`;
     }
 
     const db = getDb();
@@ -69,4 +80,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to connect Supabase project' }, { status: 500 });
   }
 }
-

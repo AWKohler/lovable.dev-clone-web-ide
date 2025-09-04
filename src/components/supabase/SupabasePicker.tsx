@@ -262,8 +262,9 @@ export function SupabasePicker({
                         onClick={(e) => {
                           e.preventDefault();
                           // Open Supabase new-project page for this org
-                          const url = o.slug
-                            ? `https://supabase.com/dashboard/org/${encodeURIComponent(o.slug)}/new`
+                          const orgKey = o.slug || o.id;
+                          const url = orgKey
+                            ? `https://supabase.com/dashboard/org/${encodeURIComponent(orgKey)}/new`
                             : 'https://supabase.com/dashboard/new';
                           window.open(url, '_blank', 'noopener,noreferrer');
                           // Start watching for the new project to appear and link automatically

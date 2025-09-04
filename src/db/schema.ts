@@ -52,7 +52,7 @@ export const supabaseLinks = pgTable('supabase_links', {
   supabaseProjectRef: text('supabase_project_ref').notNull(),
   supabaseProjectUrl: text('supabase_project_url').notNull(),
   // Note: store anon key server-side only. In production, encrypt-at-rest.
-  supabaseAnonKey: text('supabase_anon_key').notNull(),
+  supabaseAnonKey: text('supabase_anon_key'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
