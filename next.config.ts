@@ -28,6 +28,30 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    externalResolver: true,
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/api/chat',
+        destination: '/api/chat',
+        has: [],
+        basePath: false,
+        timeout: 300000, // 300 seconds in milliseconds
+      },
+      {
+        source: '/api/agent',
+        destination: '/api/agent',
+        has: [],
+        basePath: false,
+        timeout: 300000, // 300 seconds in milliseconds
+      },
+    ];
+  },
 };
 
 export default nextConfig;
