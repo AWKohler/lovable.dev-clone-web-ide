@@ -28,9 +28,10 @@ export async function GET(request: Request) {
       try {
         await fetch(`${url.origin}/api/supabase/connect-project`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Pass through cookies for Supabase session
-          credentials: 'include' as RequestCredentials,
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: request.headers.get('cookie') || '',
+          },
           body: JSON.stringify({ projectId: project.id, projectRef: supabaseRef }),
         });
       } catch (e) {

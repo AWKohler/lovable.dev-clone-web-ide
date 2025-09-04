@@ -20,6 +20,7 @@ export function SupabasePicker({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [hoverOrg, setHoverOrg] = useState<string | null>(null);
   const [projects, setProjects] = useState<Record<string, Project[]>>({});
@@ -104,6 +105,7 @@ export function SupabasePicker({
             }
           }
           onSelected?.(ref);
+          setSelectedName(candidate?.name || ref);
           setOpen(false);
           stopPolling();
           return;
@@ -148,10 +150,23 @@ export function SupabasePicker({
       }
     }
     onSelected?.(ref);
+    setSelectedName(proj.name || ref);
     setOpen(false);
   };
 
-  const buttonLabel = useMemo(() => 'Supabase', []);
+  const buttonLabel = useMemo(() => selectedName || 'Supabase', [selectedName]);
+
+  // If in a workspace, pull existing link and set label
+  useEffect(() => {
+    if (!projectId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/supabase/link?projectId=${encodeURIComponent(projectId)}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (data?.connected) setSelectedName(data.name || data.ref || null);
+      } catch {}
+    })();
+  }, [projectId]);
 
   // Close on ESC and click outside while open
   useEffect(() => {
@@ -185,16 +200,21 @@ export function SupabasePicker({
     <div ref={rootRef} className={cn('relative', className)}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
+        className={cn(
+          'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition border',
+          selectedName
+            ? 'bg-neutral-900 text-white border-neutral-900'
+            : 'border-black/10 bg-white text-neutral-800 shadow hover:bg-neutral-50'
+        )}
         title="Connect Supabase"
       >
-        <Database className="h-4 w-4" />
+        <Database className={cn('h-4 w-4', selectedName ? 'text-emerald-400' : '')} />
         <span>{buttonLabel}</span>
         <ChevronDown className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-2 w-72 rounded-xl border border-black/10 bg-white shadow-lg">
+        <div className="absolute z-[200] mt-2 w-72 rounded-xl border border-black/10 bg-white shadow-lg">
           <div className="px-3 py-2 text-xs font-medium text-neutral-500">Supabase Projects</div>
           {/* Important: allow submenus to overflow this container for hover popouts */}
           <div className="max-h-72 overflow-visible relative">
@@ -214,7 +234,7 @@ export function SupabasePicker({
                   <ChevronRight className="h-4 w-4 text-neutral-400" />
                 </div>
                 {hoverOrg === o.id && (
-                  <div className="absolute z-50 left-full -ml-px top-0 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
+                  <div className="absolute z-[210] left-full -ml-px top-0 w-80 rounded-xl border border-black/10 bg-white shadow-lg">
                     <div className="px-3 py-2">
                       <input
                         placeholder="Search projects..."
