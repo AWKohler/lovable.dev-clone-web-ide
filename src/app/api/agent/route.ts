@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     }
 
     const result = await streamText({
-      model: openai('gpt-4.1'),
+      model: openai('gpt-5'),
       system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
       messages: messages as CoreMessage[],
       tools: {
