@@ -5,7 +5,10 @@ import { getDb } from '@/db';
 import { supabaseLinks } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
-export const maxDuration = 60;
+// Allow long-running streamed responses on Vercel
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {

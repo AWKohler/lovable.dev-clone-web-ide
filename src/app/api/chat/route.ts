@@ -4,6 +4,11 @@ import { getDb } from '@/db';
 import { chatMessages, chatSessions, projects } from '@/db/schema';
 import { auth } from '@clerk/nextjs/server';
 
+// Chat endpoints are IO-bound and may stream/persist large payloads; extend limits
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // Helper: find or create a chat session for a project
 async function getOrCreateSession(db: ReturnType<typeof getDb>, projectId: string) {
   const existing = await db.select().from(chatSessions).where(eq(chatSessions.projectId, projectId)).limit(1);
