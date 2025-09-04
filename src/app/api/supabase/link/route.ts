@@ -22,8 +22,9 @@ export async function GET(req: NextRequest) {
       const session = await getSupabaseSession();
       if (session?.accessToken) {
         const api = new SupabaseManagementAPI(session.accessToken);
-        const project = await api.getProject(link.supabaseProjectRef);
-        name = project?.name;
+        const project = (await api.getProject(link.supabaseProjectRef)) as { name?: unknown } | unknown;
+        const projectName = (project as any)?.name;
+        name = typeof projectName === 'string' ? projectName : undefined;
       }
     } catch {}
     return NextResponse.json({ connected: true, ref: link.supabaseProjectRef, url: link.supabaseProjectUrl, name });
@@ -32,4 +33,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ connected: false }, { status: 200 });
   }
 }
-
