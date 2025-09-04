@@ -70,6 +70,11 @@ export async function POST(req: Request) {
       model: openai('gpt-5'),
       system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
       messages: messages as CoreMessage[],
+      experimental_providerMetadata: {
+        openai: {
+              reasoningEffort: 'minimal'
+        }
+      },
       tools: {
         listFiles: tool({
           description: 'List files and folders. Set recursive=true to walk subdirectories.',
