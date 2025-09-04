@@ -67,14 +67,15 @@ export async function POST(req: Request) {
     }
 
     const result = await streamText({
-      model: openai('gpt-5'),
+      // model: openai('gpt-5'),
+      model: openai('gpt-4.1'),
       system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
       messages: messages as CoreMessage[],
-      experimental_providerMetadata: {
-        openai: {
-              reasoningEffort: 'minimal'
-        }
-      },
+      // experimental_providerMetadata: {
+      //   openai: {
+      //     reasoningEffort: 'minimal'
+      //   }
+      // },
       tools: {
         listFiles: tool({
           description: 'List files and folders. Set recursive=true to walk subdirectories.',
