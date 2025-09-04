@@ -32,9 +32,16 @@ export async function POST(req: NextRequest) {
           api.getProjectApiKeys(projectRef),
           api.getProject(projectRef),
         ]);
-        anonKey = Array.isArray(keys)
-          ? (keys.find((k: Record<string, unknown>) => (k as any).name === 'anon')?.api_key as string | undefined) ?? null
-          : null;
+        const isKey = (v: unknown): v is { name?: unknown; api_key?: unknown } =>
+          typeof v === 'object' && v !== null && ('name' in v || 'api_key' in v);
+        if (Array.isArray(keys)) {
+          for (const item of keys as unknown[]) {
+            if (isKey(item) && item.name === 'anon' && typeof item.api_key === 'string') {
+              anonKey = item.api_key;
+              break;
+            }
+          }
+        }
         projectUrl = (details as unknown as { ref?: string })?.ref
           ? `https://${(details as unknown as { ref?: string }).ref}.supabase.co`
           : undefined;
