@@ -20,7 +20,12 @@
   --workbench-width: 75vw;
   --workbench-left: 25vw;
   --workbench-inner-width: calc(100vw - var(--workbench-left));
-  --header-height: 3rem;}
+  --header-height: 3rem;
+
+  /* Default font variables when next/font is unavailable */
+  --font-geist-sans: ui-sans-serif;
+  --font-geist-mono: ui-monospace;
+}
 
 @theme inline {
   --color-background: var(--background);

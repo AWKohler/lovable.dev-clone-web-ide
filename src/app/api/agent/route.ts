@@ -1,4 +1,4 @@
-import { streamText, tool, type CoreMessage } from 'ai';
+import { streamText, tool, convertToModelMessages } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { getDb } from '@/db';
@@ -66,50 +66,101 @@ export async function POST(req: Request) {
       console.warn('Failed to read Supabase link for agent prompt:', e);
     }
 
+    // Convert incoming UI messages (with `parts`) to model messages expected by providers.
+    const modelMessages = convertToModelMessages(messages as any);
+
+
+    console.log('messages:', JSON.stringify(messages, null, 2));
+
+
+    // console.log(modelMessages)
+    console.log('modelMessages:', JSON.stringify(modelMessages, null, 2));
+
+
     const result = await streamText({
       // model: openai('gpt-5'),
       model: openai('gpt-4.1'),
+
       system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
-      messages: messages as CoreMessage[],
-      // experimental_providerMetadata: {
-      //   openai: {
-      //     reasoningEffort: 'minimal'
-      //   }
+      messages: modelMessages,
+
+      // onChunk: (token) => {
+      //   console.log('Token:', String(token));
       // },
+
+      onChunk: (token: any) => {
+        // Defensive type narrowing
+        if ("chunk" in token && token.chunk?.type === "text-delta") {
+          console.log("Token:", token.chunk.text);
+        } else if ("chunk" in token && token.chunk?.type === "reasoning-delta") {
+          console.log("Reasoning:", token.chunk.text);
+        } else {
+          console.log("Unrecognized token:", JSON.stringify(token));
+        }
+      },
+
+      // providerOptions: {
+      //   openai: {
+      //     // reasoningEffort: 'minimal',
+      //     // reasoningSummary: 'detailed',
+      //     reasoningSummary: 'auto', // 'auto' for condensed or 'detailed' for comprehensive
+      //   },
+      // },
+
       tools: {
         listFiles: tool({
-          description: 'List files and folders. Set recursive=true to walk subdirectories.',
-          parameters: z.object({
+          description:
+            "List files and folders. Set recursive=true to walk subdirectories.",
+          inputSchema: z.object({
             path: z.string().describe("Start directory, e.g. '/' or '/src'"),
             recursive: z.boolean().optional().default(false),
           }),
         }),
+
         readFile: tool({
-          description: 'Read a single file as UTF-8.',
-          parameters: z.object({ path: z.string() }),
-        }),
-        applyDiff: tool({
-          description:
-            'Apply one or more SEARCH/REPLACE blocks to a file. Use exact SEARCH text.',
-          parameters: z.object({
-            path: z.string().describe('Target file path'),
-            diff: z.string().describe(
-              'One or more SEARCH/REPLACE blocks. See system prompt for format.'
-            ),
+          description: "Read a single file as UTF-8.",
+          inputSchema: z.object({
+            path: z.string().describe("File path to read"),
           }),
         }),
-        searchFiles: tool({
-          description: 'Recursive text search starting at path. query may be regex.',
-          parameters: z.object({ path: z.string(), query: z.string() }),
+
+        applyDiff: tool({
+          description:
+            "Apply one or more SEARCH/REPLACE blocks to a file. Use exact SEARCH text.",
+          inputSchema: z.object({
+            path: z.string().describe("Target file path"),
+            diff: z
+              .string()
+              .describe(
+                "One or more SEARCH/REPLACE blocks. See system prompt for format."
+              ),
+          }),
         }),
+
+        searchFiles: tool({
+          description:
+            "Recursive text search starting at path. Query may be regex.",
+          inputSchema: z.object({
+            path: z.string().describe("Directory to search"),
+            query: z.string().describe("Search query (can be regex)"),
+          }),
+        }),
+
         executeCommand: tool({
-          description: 'Run a command in the WebContainer (e.g. pnpm, node).',
-          parameters: z.object({ command: z.string(), args: z.array(z.string()).default([]) }),
+          description: "Run a command in the WebContainer (e.g. pnpm, node).",
+          inputSchema: z.object({
+            command: z.string().describe("Command to run"),
+            args: z.array(z.string()).default([]),
+          }),
         }),
       },
     });
+    
+    return result.toUIMessageStreamResponse();
 
-    return result.toDataStreamResponse();
+        // return result.toTextStreamResponse();
+
+
   } catch (err) {
     console.error('Agent API error:', err);
     const message = err instanceof Error ? err.message : String(err);
