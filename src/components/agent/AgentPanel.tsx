@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
 import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX } from 'lucide-react';
@@ -40,14 +39,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
 
-  const { messages, status, setMessages, addToolResult, stop, sendMessage } = useChat({
-    // Auto-resubmit when all tool results are available
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
-    transport: new DefaultChatTransport({
-      api: '/api/agent',
-      body: { projectId, platform },
-    }),
-    async onFinish({ message }) {
+  const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
+    api: '/api/agent',
+    body: { projectId, platform },
+    async onFinish(message) {
       // Persist final assistant message (complete content, including any tool-calls)
       try {
         await fetch('/api/chat', {
@@ -64,10 +59,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     onError: () => setBusy(false),
     async onToolCall({ toolCall }) {
       try {
-        // Guard dynamic tool calls (SDK may mark these as dynamic)
-        // @ts-expect-error dynamic may exist at runtime
-        if (toolCall.dynamic) return;
-        const args = (toolCall as { input?: unknown }).input as Record<string, unknown>;
+        const args = toolCall.args as Record<string, unknown>;
         // Ephemeral: record tool invocation
         setActions((prev) => [
           ...prev,
@@ -86,7 +78,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               String(args.path ?? '/'),
               Boolean(args.recursive)
             );
-            addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: out as unknown });
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -95,10 +87,23 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }) : a));
             break;
           }
+          case 'createFile': {
+            console.log("create file called")
+            const path = String(args.path ?? '');
+            const res = await WebContainerAgent.createFile(path);
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: res.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: res.message,
+            }) : a));
+            break;
+          }
           case 'readFile': {
             console.log("read files called")
             const out = await WebContainerAgent.readFile(String(args.path ?? ''));
-            addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: out as unknown });
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -119,7 +124,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             let after = before;
             try { after = await WebContainerAgent.readFile(path); } catch {}
             const stats = diffLineStats(before, after);
-            addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: JSON.stringify(res) as unknown });
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -138,7 +143,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             )) {
               results.push(r);
             }
-            addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: JSON.stringify(results) as unknown });
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(results) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -157,7 +162,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             for await (const chunk of WebContainerAgent.executeCommand(cmd, cmdArgs)) {
               combined += chunk;
             }
-            addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: combined as unknown });
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: combined });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -170,8 +175,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       } catch (err: unknown) {
         console.error('Tool error', err);
         const message = err instanceof Error ? err.message : String(err);
-        addToolResult({ tool: toolCall.toolName as string, toolCallId: toolCall.toolCallId, output: `Tool execution failed: ${message}` as unknown });
-      setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+        await addToolResult({ toolCallId: toolCall.toolCallId, result: `Tool execution failed: ${message}` });
+        setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
           ...a,
           status: 'error',
           finishedAt: Date.now(),
@@ -191,9 +196,6 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     } catch {}
   };
-
-  // Local input state (useChat from @ai-sdk/react does not manage input)
-  const [input, setInput] = useState('');
 
   // Convert status to isLoading for backward compatibility
   const isLoading = status === 'streaming' || status === 'submitted';
@@ -217,9 +219,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           const lastAssistant = [...data.messages].reverse().find((m) => m.role === 'assistant');
           if (lastAssistant) {
             try {
-              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify((lastAssistant as { parts?: unknown }).parts).slice(-512) };
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify(lastAssistant.content).slice(-512) };
             } catch {
-              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: String((lastAssistant as { parts?: unknown }).parts) };
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: String(lastAssistant.content) };
             }
           }
         }
@@ -242,7 +244,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         // Progressive upsert for assistant so refreshes preserve context
         if (m.role === 'assistant') {
           const hash = (() => {
-            try { return JSON.stringify((m as { parts?: unknown }).parts).slice(-512); } catch { return String((m as { parts?: unknown }).parts); }
+            try { return JSON.stringify(m.content).slice(-512); } catch { return String(m.content); }
           })();
           const prev = lastAssistantSavedRef.current;
           if (!prev || prev.id !== m.id || prev.hash !== hash) {
@@ -285,15 +287,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       setInput(initialPrompt);
       // submit on next tick so input state is applied
       setTimeout(() => {
-        setBusy(true);
-        sendMessage({ text: initialPrompt });
+        // Call handleSubmit with a synthetic event
+        handleSubmit({ preventDefault() {} } as React.FormEvent<HTMLFormElement>);
         removePromptFromUrl();
       }, 0);
     }
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading, initialPrompt, initialized, setInput, sendMessage]);
+  }, [messages, isLoading, handleSubmit, initialPrompt, initialized, setInput]);
 
   // Ensure LiveActions visibility stays pinned to the bottom as actions stream in
   useEffect(() => {
@@ -341,7 +343,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           type DataPart = { type: 'data'; data: unknown };
           type UiPart = TextPart | ToolCallPart | DataPart | Record<string, unknown>;
 
-          const content = (m as { parts?: unknown }).parts as unknown;
+          const content = (m as { content: unknown }).content;
           return (
             <div key={m.id} className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight', m.role === 'user' ? 'bg-elevated' : '') }>
               {/* <div className="text-[11px] mb-1 text-muted uppercase tracking-wide">{m.role}</div> */}
@@ -351,7 +353,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                     return <Markdown key={i} content={(part as TextPart).text} />;
                   }
                   if ((part as ToolCallPart).type === 'tool-call') {
-                    const t = (part as ToolCallPart).toolCall as { toolName?: string; input?: unknown };
+                    const t = (part as ToolCallPart).toolCall as { toolName?: string; args?: unknown };
                     const meta = t?.toolName ? `• ${t.toolName}` : undefined;
                     return (
                       <ToolCard
@@ -360,7 +362,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                         meta={meta}
                         content={
                           <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">
-                            {JSON.stringify(t?.input ?? t, null, 2)}
+                            {JSON.stringify(t?.args ?? t, null, 2)}
                           </pre>
                         }
                       />
@@ -402,9 +404,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       <form
         onSubmit={(e) => {
-          e.preventDefault();
           setBusy(true);
-          sendMessage({ text: input });
+          handleSubmit(e);
           removePromptFromUrl();
         }}
         className="group flex flex-col gap-2 rounded-2xl border border-border bg-elevated p-4 transition-colors duration-150 ease-in-out relative mt-2"
@@ -418,7 +419,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               maxLength={50000}
               style={{ minHeight: 40, height: 40 }}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               disabled={busy}
             />
           </div>

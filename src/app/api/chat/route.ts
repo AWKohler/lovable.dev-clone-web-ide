@@ -36,18 +36,8 @@ export async function GET(req: NextRequest) {
       .where(eq(chatMessages.sessionId, session.id))
       .orderBy(desc(chatMessages.createdAt));
 
-    // Return in chronological order. Normalize to UI messages shape the client expects.
-    const messages = [...rows].reverse().map((r) => {
-      const c = r.content as unknown as any;
-      // We store JSON in `content` which may either be a string, an array of parts,
-      // or an object with a `parts` field. Normalize for the UI consumer.
-      if (c && typeof c === 'object' && 'parts' in c) {
-        return { id: r.messageId, role: r.role, parts: c.parts } as unknown;
-      }
-      return Array.isArray(c)
-        ? ({ id: r.messageId, role: r.role, parts: c } as unknown)
-        : ({ id: r.messageId, role: r.role, content: c } as unknown);
-    });
+    // Return in chronological order
+    const messages = [...rows].reverse().map((r) => ({ id: r.messageId, role: r.role, content: r.content as unknown }));
     return NextResponse.json({ sessionId: session.id, messages });
   } catch (err) {
     console.error('GET /api/chat failed:', err);
@@ -71,29 +61,19 @@ export async function POST(req: NextRequest) {
 
     // Upsert by (sessionId, messageId) so we can update the assistant
     // message multiple times during streaming without creating duplicates.
-    // Normalize incoming message content. The UI may send `parts` (UIMessage) or `content`.
-    const content: object = (() => {
-      const m = message as unknown as Record<string, unknown>;
-      if (m && typeof m === 'object') {
-        if (m.parts !== undefined) return { parts: m.parts } as object;
-        if (m.content !== undefined) return m.content as object;
-      }
-      return '' as unknown as object; // ensure non-null for NOT NULL column
-    })();
-
     await db
       .insert(chatMessages)
       .values({
         sessionId: session.id,
         messageId: message.id,
         role: message.role,
-        content,
+        content: message.content as object,
       })
       .onConflictDoUpdate({
         target: [chatMessages.sessionId, chatMessages.messageId],
         set: {
           role: message.role,
-          content,
+          content: message.content as object,
         },
       });
     return NextResponse.json({ ok: true });

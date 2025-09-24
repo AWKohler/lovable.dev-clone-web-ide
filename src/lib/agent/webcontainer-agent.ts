@@ -41,6 +41,62 @@ export const WebContainerAgent = {
     return container.fs.readFile(path, 'utf8');
   },
 
+  async createFile(filePath: string): Promise<
+    | { ok: true; message: string; path: string }
+    | { ok: false; message: string; path?: string }
+  > {
+    const container = await this.getContainer();
+    try {
+      let path = String(filePath || '').trim();
+      if (!path) return { ok: false, message: 'Path is required' };
+      // Normalize to absolute path, collapse duplicate slashes, remove trailing slash
+      if (!path.startsWith('/')) path = '/' + path;
+      path = path.replace(/\/+/g, '/');
+      if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
+      if (path === '/' || path.endsWith('/')) {
+        return { ok: false, message: 'Invalid file path', path };
+      }
+
+      // Refuse to overwrite existing files/directories
+      // Check if a directory exists at this path
+      try {
+        await container.fs.readdir(path);
+        return { ok: false, message: 'A directory with this name already exists', path };
+      } catch (err) {
+        const msg = String(err ?? '');
+        // If error is not ENOENT or ENOTDIR, proceed to file check
+      }
+      // Check if a file exists at this path
+      try {
+        await container.fs.readFile(path, 'utf8');
+        return { ok: false, message: 'File already exists', path };
+      } catch (err) {
+        const msg = String(err ?? '');
+        if (!/ENOENT/.test(msg)) {
+          // Unknown error (e.g., permission), surface it
+          throw err;
+        }
+      }
+
+      // Ensure parent directory exists
+      const lastSlash = path.lastIndexOf('/');
+      const dir = lastSlash > 0 ? path.slice(0, lastSlash) || '/' : '/';
+      if (dir && dir !== '/') {
+        try {
+          await container.fs.mkdir(dir, { recursive: true });
+        } catch {}
+      }
+
+      // Create an empty file
+      await container.fs.writeFile(path, '');
+      await WebContainerManager.saveProjectState('default');
+      return { ok: true, message: `Created file ${path}`, path };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, message };
+    }
+  },
+
   async applyDiff(filePath: string, diff: string): Promise<{ applied: number; failures: number } & (
     | { ok: true; message: string }
     | { ok: false; message: string }
