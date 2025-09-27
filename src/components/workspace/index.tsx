@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
+import { DevServerManager } from '@/lib/dev-server';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
 import { FileTree } from './file-tree';
 import { FileSearch } from './file-search';
@@ -67,9 +68,6 @@ export function Workspace({
   const [isInstalling, setIsInstalling] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
-  const [devServerProcess, setDevServerProcess] = useState<{
-    kill: () => void;
-  } | null>(null);
   const [hydrating, setHydrating] = useState(true);
   const [expUrl, setExpUrl] = useState<string | null>(null);
   const [platform, setPlatform] = useState<'web' | 'mobile'>(
@@ -242,105 +240,36 @@ export function Workspace({
   );
 
   const startDevServer = useCallback(
-    async (container: WebContainer) => {
+    async (_container: WebContainer) => {
+      // Keep UI flags similar, but delegate to DevServerManager
       if (!isInstalled) {
-        await runInstall(container);
+        await runInstall(_container);
       }
-
       setIsStartingServer(true);
       try {
-        // Start the dev server
-        const serverProcess =
-          platform === 'mobile'
-            ? await container.spawn('pnpm', ['exec', 'expo', 'start', '--tunnel'])
-            : await container.spawn('pnpm', ['dev']);
-        setDevServerProcess(serverProcess);
-        console.log('Dev server started');
-        if (platform === 'mobile') {
-          try {
-            const reader = serverProcess.output.getReader();
-            (async () => {
-              let buffer = '';
-              while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                if (value) {
-                  buffer += value;
-                  const match = buffer.match(/(exp:\/\/[^\s]+)/);
-                  if (match && match[1]) {
-                    const raw = match[1];
-                    // strip ANSI escape sequences and non-printable trailing chars
-                    const clean = raw
-                      .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
-                      .replace(/[^\x20-\x7E]+$/g, '');
-                    setExpUrl(clean);
-                    // Remove consumed part to avoid duplicate matches
-                    buffer = buffer.slice(buffer.indexOf(raw) + raw.length);
-                  }
-                  if (buffer.length > 2000) buffer = buffer.slice(-1000);
-                }
-              }
-            })().catch(() => {});
-          } catch {}
-        }
-
-        // The preview store will automatically detect the server and update isDevServerRunning
+        const res = await DevServerManager.start();
+        console.log(res.message);
       } catch (error) {
         console.error('Failed to start dev server:', error);
       } finally {
         setIsStartingServer(false);
       }
     },
-    [isInstalled, runInstall, platform],
+    [isInstalled, runInstall],
   );
 
   const stopDevServer = useCallback(
-    async (container?: WebContainer) => {
+    async (_container?: WebContainer) => {
       try {
         console.log('🛑 Stopping dev server...');
-
-        if (devServerProcess) {
-          // Kill the specific dev server process
-          devServerProcess.kill();
-          setDevServerProcess(null);
-          console.log('✅ Dev server stopped via process.kill()');
-        } else if (container) {
-          // More aggressive process cleanup for WebContainer
-          const killCommands = [
-            ['pkill', '-f', 'vite'],
-            ['pkill', '-f', 'node.*dev'],
-            ['pkill', '-f', 'pnpm.*dev'],
-            ['pkill', '-f', 'expo'],
-          ];
-
-          for (const [cmd, ...args] of killCommands) {
-            try {
-              await container.spawn(cmd, args);
-              console.log('✅ Executed:', cmd, args.join(' '));
-            } catch {
-              // Ignore errors - process might not exist
-            }
-          }
-
-          // Also try to kill processes on Vite's default port
-          try {
-            await container.spawn('pkill', ['-f', ':5173']);
-            console.log('✅ Killed processes on port 5173');
-          } catch {
-            // Ignore errors
-          }
-        }
-
-        // Give processes time to clean up
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        const res = await DevServerManager.stop();
+        console.log(res.message);
         setExpUrl(null);
-
-        // The preview store will automatically update isDevServerRunning when server stops
       } catch (error) {
         console.error('Failed to stop dev server:', error);
       }
     },
-    [devServerProcess],
+    [],
   );
 
   const handlePlayStopClick = useCallback(async () => {
@@ -1135,6 +1064,27 @@ export function cn(...inputs: ClassValue[]) {
     handleFileSystemChange,
     runInstall,
   ]);
+
+  // React to preview refresh requests from tools
+  useEffect(() => {
+    const onRefresh = () => setPreviewReloadKey((k) => k + 1);
+    const onExpoUrl = (e: Event) => {
+      try {
+        const url = (e as CustomEvent).detail?.url as string | undefined;
+        if (url) setExpUrl(url);
+      } catch {}
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('preview-refresh', onRefresh as EventListener);
+      window.addEventListener('devserver-exp-url', onExpoUrl as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('preview-refresh', onRefresh as EventListener);
+        window.removeEventListener('devserver-exp-url', onExpoUrl as EventListener);
+      }
+    };
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {

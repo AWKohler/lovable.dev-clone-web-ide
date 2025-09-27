@@ -1,6 +1,7 @@
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { parseSearchReplaceBlocks, applyBlocksToContent } from './diff';
+import { DevServerManager } from '@/lib/dev-server';
 
 export type GrepResult = { filePath: string; lineNumber: number; lineContent: string };
 
@@ -179,6 +180,22 @@ export const WebContainerAgent = {
   },
 
   async *executeCommand(command: string, args: string[]): AsyncGenerator<string> {
+    // Prevent starting the dev server directly via commands; require dedicated tool
+    const joined = [command, ...(args || [])].join(' ').toLowerCase();
+    const forbidden = [
+      'pnpm dev',
+      'npm run dev',
+      'vite',
+      'expo start',
+      'pnpm exec expo start',
+      'npx expo start',
+    ];
+    for (const pat of forbidden) {
+      if (joined.includes(pat)) {
+        yield 'Starting the dev server via shell is disabled. Use the startDevServer tool instead.';
+        return;
+      }
+    }
     // Ensure completion even for commands that produce no output (e.g., rmdir),
     // and guard against hanging streams by using a timeout and cancel.
     const container = await this.getContainer();
@@ -222,5 +239,40 @@ export const WebContainerAgent = {
     // Yield once with the full output so tool call can complete
     const final = combined.trim().length > 0 ? combined : `Command exited with code ${exitCode}`;
     yield final;
+  },
+
+  async startDevServer(): Promise<{ ok: boolean; message: string; alreadyRunning?: boolean }> {
+    try {
+      return await DevServerManager.start();
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  async getDevServerLog(linesBack: number): Promise<{ ok: boolean; message: string; log?: string }> {
+    // If server not running, return message instructing to start
+    if (!(await DevServerManager.isRunning())) {
+      return {
+        ok: false,
+        message: 'Dev server is not running. Use startDevServer tool to start it.',
+      };
+    }
+    return DevServerManager.getLog(linesBack);
+  },
+
+  async stopDevServer(): Promise<{ ok: boolean; message: string; alreadyStopped?: boolean }> {
+    try {
+      return await DevServerManager.stop();
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  async isDevServerRunning(): Promise<boolean> {
+    try {
+      return await DevServerManager.isRunning();
+    } catch {
+      return false;
+    }
   },
 };

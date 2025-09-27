@@ -171,6 +171,80 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }) : a));
             break;
           }
+          case 'getDevServerLog': {
+            const linesBack = Number((args as { linesBack?: number }).linesBack ?? 200);
+            const out = await WebContainerAgent.getDevServerLog(linesBack);
+            const result = out.ok ? (out.log ?? '') : out.message;
+            await addToolResult({ toolCallId: toolCall.toolCallId, result });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: out.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: result.slice(0, 400),
+            }) : a));
+            break;
+          }
+          case 'startDevServer': {
+            const res = await WebContainerAgent.startDevServer();
+            const msg = res.message;
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: res.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: msg,
+            }) : a));
+            break;
+          }
+          case 'stopDevServer': {
+            const res = await WebContainerAgent.stopDevServer();
+            const msg = res.message;
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: res.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: msg,
+            }) : a));
+            break;
+          }
+          case 'refreshPreview': {
+            const running = await WebContainerAgent.isDevServerRunning();
+            if (!running) {
+              const msg = 'Dev server is not running. Start it before refreshing the preview.';
+              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+                ...a,
+                status: 'error',
+                finishedAt: Date.now(),
+                resultPreview: msg,
+              }) : a));
+              break;
+            }
+            try {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('preview-refresh'));
+              }
+              const msg = 'Preview refresh requested.';
+              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+                ...a,
+                status: 'success',
+                finishedAt: Date.now(),
+                resultPreview: msg,
+              }) : a));
+            } catch (e) {
+              const msg = `Failed to refresh preview: ${e instanceof Error ? e.message : String(e)}`;
+              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+                ...a,
+                status: 'error',
+                finishedAt: Date.now(),
+                resultPreview: msg,
+              }) : a));
+            }
+            break;
+          }
         }
       } catch (err: unknown) {
         console.error('Tool error', err);
