@@ -269,7 +269,7 @@
 //       }
 //       const anthropic = createAnthropic({ apiKey });
 //       const result = await streamText({
-//         model: anthropic('claude-sonnet-4.5'),
+//         model: anthropic('claude-opus-4-5-20251101'),
 //         system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
 //         messages: messages as CoreMessage[],
 //         tools,
@@ -477,7 +477,7 @@ export async function POST(req: Request) {
     const result = await streamText({
       // model: openai('gpt-5'),
       // model: openai('gpt-4.1'),
-      model: anthropic('claude-opus-4.5'),
+      model: anthropic('claude-opus-4-5-20251101'),
       // model: anthropic('claude-sonnet-4-20250514'),
       system: (platform === 'mobile' ? systemPromptMobile : systemPromptWeb) + supabaseNote,
       messages: messages as CoreMessage[],
