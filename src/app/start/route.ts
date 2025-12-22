@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const prompt = url.searchParams.get('prompt')?.slice(0, 4000) ?? '';
   const visibility = url.searchParams.get('visibility') ?? 'public';
   const platform = (url.searchParams.get('platform') === 'mobile' ? 'mobile' : 'web') as 'web' | 'mobile';
+  const model = (url.searchParams.get('model') === 'claude-sonnet-4.5' ? 'claude-sonnet-4.5' : 'gpt-4.1') as 'gpt-4.1' | 'claude-sonnet-4.5';
   const supabaseRef = url.searchParams.get('supabaseRef');
 
   if (!userId) {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
     const name = prompt?.trim() ? prompt.slice(0, 48) : 'New Project';
     const [project] = await db
       .insert(projects)
-      .values({ name, userId, platform })
+      .values({ name, userId, platform, model })
       .returning();
 
     // Optionally link Supabase project if provided and user has a Supabase session
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
     const workspaceUrl = new URL(`${url.origin}/workspace/${project.id}`);
     if (prompt) workspaceUrl.searchParams.set('prompt', prompt);
     workspaceUrl.searchParams.set('platform', platform);
+    workspaceUrl.searchParams.set('model', model);
     if (visibility) workspaceUrl.searchParams.set('visibility', visibility);
     return NextResponse.redirect(workspaceUrl);
   } catch (err) {

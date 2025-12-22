@@ -5,6 +5,7 @@ import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { DevServerManager } from '@/lib/dev-server';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
+import { captureProjectSnapshot, uploadProjectSnapshot } from '@/lib/snapshot-capture';
 import { FileTree } from './file-tree';
 import { FileSearch } from './file-search';
 import { AgentPanel } from '@/components/agent/AgentPanel';
@@ -281,6 +282,53 @@ export function Workspace({
       await startDevServer(webcontainer);
     }
   }, [webcontainer, isDevServerRunning, startDevServer, stopDevServer]);
+
+  // Manual snapshot trigger for testing
+  const handleManualSnapshot = useCallback(async () => {
+    console.log('🔧 Manual snapshot triggered');
+    const activePreview = previews[activePreviewIndex];
+
+    if (!activePreview?.baseUrl) {
+      console.error('No active preview available');
+      alert('Start the dev server first!');
+      return;
+    }
+
+    console.log('📸 Capturing snapshot from URL:', activePreview.baseUrl);
+
+    try {
+      const snapshot = await captureProjectSnapshot(activePreview.baseUrl, {
+        width: 1280,
+        height: 720,
+      });
+
+      console.log('Snapshot captured:', {
+        hasHtml: !!snapshot.htmlContent,
+        htmlLength: snapshot.htmlContent?.length,
+        hasThumbnail: !!snapshot.thumbnailBlob,
+        thumbnailSize: snapshot.thumbnailBlob?.size,
+        error: snapshot.error,
+      });
+
+      if (snapshot.error) {
+        alert('Failed to capture: ' + snapshot.error);
+        return;
+      }
+
+      console.log('⬆️ Uploading...');
+      const result = await uploadProjectSnapshot(projectId, snapshot);
+
+      if (result.error) {
+        alert('Upload failed: ' + result.error);
+      } else {
+        alert('Snapshot saved! Check console for details.');
+        console.log('✅ Upload result:', result);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error: ' + String(error));
+    }
+  }, [projectId, previews, activePreviewIndex]);
 
   useEffect(() => {
     async function initWebContainer() {
@@ -1086,6 +1134,78 @@ export function cn(...inputs: ClassValue[]) {
     };
   }, []);
 
+  // Capture snapshot when agent finishes a turn
+  useEffect(() => {
+    const handleAgentTurnFinished = async (e: Event) => {
+      console.log('🎯 Agent turn finished event received');
+      const detail = (e as CustomEvent).detail;
+      console.log('Event detail:', detail);
+      console.log('Current projectId:', projectId);
+
+      if (detail?.projectId !== projectId) {
+        console.log('Skipping: different project');
+        return;
+      }
+
+      // Only capture if there's an active preview (dev server running)
+      const activePreview = previews[activePreviewIndex];
+      console.log('Active preview:', activePreview);
+
+      if (!activePreview?.baseUrl) {
+        console.log('⚠️ Skipping snapshot: no active preview');
+        return;
+      }
+
+      console.log('📸 Starting snapshot capture from URL:', activePreview.baseUrl);
+
+      try {
+        // Wait a moment for any pending renders to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        console.log('Capturing screenshot via server...');
+        const snapshot = await captureProjectSnapshot(activePreview.baseUrl, {
+          width: 1280,
+          height: 720,
+        });
+
+        console.log('Snapshot result:', {
+          hasHtml: !!snapshot.htmlContent,
+          htmlLength: snapshot.htmlContent?.length,
+          hasThumbnail: !!snapshot.thumbnailBlob,
+          thumbnailSize: snapshot.thumbnailBlob?.size,
+          error: snapshot.error,
+        });
+
+        if (snapshot.error) {
+          console.error('❌ Snapshot capture error:', snapshot.error);
+          return;
+        }
+
+        console.log('⬆️ Uploading snapshot to server...');
+        const result = await uploadProjectSnapshot(projectId, snapshot);
+        if (result.error) {
+          console.error('❌ Snapshot upload error:', result.error);
+        } else {
+          console.log('✅ Snapshot saved successfully:', result);
+        }
+      } catch (error) {
+        console.error('❌ Failed to capture snapshot:', error);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('agent-turn-finished', handleAgentTurnFinished);
+      console.log('✅ Registered agent-turn-finished listener for project:', projectId);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('agent-turn-finished', handleAgentTurnFinished);
+        console.log('🗑️ Removed agent-turn-finished listener');
+      }
+    };
+  }, [projectId, previews, activePreviewIndex]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1202,6 +1322,18 @@ export function cn(...inputs: ClassValue[]) {
                     ? 'Stop'
                     : 'Start'}
             </span>
+          </Button>
+
+          {/* Test Snapshot Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleManualSnapshot}
+            disabled={!isDevServerRunning}
+            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+            title="Test snapshot capture"
+          >
+            📸 Test
           </Button>
 
           {/* File explorer toggle - on the right side of Tabs and after Start/Stop */}

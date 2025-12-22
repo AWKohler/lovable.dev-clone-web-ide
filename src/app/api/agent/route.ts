@@ -316,8 +316,8 @@ export async function POST(req: Request) {
       }
       const anthropic = createAnthropic({ apiKey });
       const result = await streamText({
-        model: anthropic("claude-opus-4-5"),
-        // model: anthropic('claude-opus-4-5-20251101'),
+        // model: anthropic("claude-opus-4-5"),
+        model: anthropic('claude-opus-4-5-20251101'),
         system:
           (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
           supabaseNote,

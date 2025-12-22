@@ -1,17 +1,22 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
-import { ArrowUp, Heart, Plus, Smartphone, Laptop } from 'lucide-react';
+import { ArrowUp, Heart, Plus, Smartphone, Laptop, Cog } from 'lucide-react';
 import { SupabasePicker } from '@/components/supabase/SupabasePicker';
+import { useToast } from '@/components/ui/toast';
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
   const [platform, setPlatform] = useState<'web' | 'mobile'>('web');
   const [supabaseRef, setSupabaseRef] = useState<string | null>(null);
+  const [model, setModel] = useState<'gpt-4.1' | 'claude-sonnet-4.5'>('gpt-4.1');
+  const { toast } = useToast();
+  const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
+  const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
@@ -20,15 +25,33 @@ export default function Home() {
     if (prompt.trim()) params.set('prompt', prompt.trim());
     params.set('visibility', 'public');
     params.set('platform', platform);
+    params.set('model', model);
     if (supabaseRef) params.set('supabaseRef', supabaseRef);
     const target = `/start?${params.toString()}`;
     if (authed) {
+      if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (model === 'claude-sonnet-4.5' && hasAnthropicKey === false)) {
+        toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
+        return;
+      }
       router.push(target);
     } else {
       const redirect = encodeURIComponent(target);
       router.push(`/sign-in?redirect_url=${redirect}`);
     }
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/user-settings');
+        if (res.ok) {
+          const data = await res.json();
+          setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
+          setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+        }
+      } catch {}
+    })();
+  }, []);
 
   return (
     <div className="antialiased text-neutral-900 bg-white min-h-screen">
@@ -52,6 +75,9 @@ export default function Home() {
               </a>
 
               <nav className="hidden md:flex items-center gap-7 text-sm text-neutral-700">
+                <SignedIn>
+                  <a className="font-medium hover:text-black transition" href="/projects">My Projects</a>
+                </SignedIn>
                 <a className="hover:text-black transition" href="#">Community</a>
                 <a className="hover:text-black transition" href="#">Pricing</a>
                 <a className="hover:text-black transition" href="#">Enterprise</a>
@@ -74,6 +100,14 @@ export default function Home() {
                   </button>
                 </SignedOut>
                 <SignedIn>
+                  <a
+                    href="/settings"
+                    className="inline-flex items-center justify-center rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm text-neutral-900 shadow-sm hover:bg-neutral-50 transition"
+                    title="Settings"
+                    aria-label="Settings"
+                  >
+                    <Cog className="h-4 w-4" />
+                  </a>
                   <UserButton afterSignOutUrl="/" />
                 </SignedIn>
               </div>
@@ -111,26 +145,37 @@ export default function Home() {
 
                 {/* Bottom-left controls */}
                 <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 sm:bottom-4 sm:left-4">
-                  <div className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-white shadow hover:bg-neutral-50 transition">
-                    <Plus className="h-4 w-4 text-neutral-700" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPlatform(platform === 'web' ? 'mobile' : 'web')}
-                    className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
-                    title="Toggle platform"
-                  >
+                <div className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-white shadow hover:bg-neutral-50 transition">
+                  <Plus className="h-4 w-4 text-neutral-700" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPlatform(platform === 'web' ? 'mobile' : 'web')}
+                  className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
+                  title="Toggle platform"
+                >
                     {platform === 'web' ? (
                       <Laptop className="h-4 w-4" />
                     ) : (
                       <Smartphone className="h-4 w-4" />
                     )}
-                    <span>{platform === 'web' ? 'Web' : 'Mobile App'}</span>
+                    <span>{platform === 'web' ? 'Web' : 'Mobile App (Experimental)'}</span>
                   </button>
                   {/* Supabase connect picker */}
                   <div className="pointer-events-auto">
                     <SupabasePicker onSelected={(ref) => setSupabaseRef(ref)} />
                   </div>
+
+                  {/* Model Selector */}
+                  <select
+                    className="pointer-events-auto inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow hover:bg-neutral-50 transition"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value as 'gpt-4.1' | 'claude-sonnet-4.5')}
+                    title="Select model"
+                  >
+                    <option value="gpt-4.1">GPT-4.1</option>
+                    <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                  </select>
                 </div>
 
                 {/* Send button */}

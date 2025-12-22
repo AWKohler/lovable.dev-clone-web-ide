@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX } from 'lucide-react';
+import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX, Cog } from 'lucide-react';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
+import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { diffLineStats } from '@/lib/agent/diff-stats';
 
@@ -38,6 +39,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [actions, setActions] = useState<ToolCallData[]>([]);
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
+  const [model, setModel] = useState<'gpt-4.1' | 'claude-sonnet-4.5'>('gpt-4.1');
+  const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
+  const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
+  const { toast } = useToast();
 
   const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
     api: '/api/agent',
@@ -55,6 +60,12 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         console.error('Failed to persist assistant message:', err);
       }
       setBusy(false);
+
+      // Emit event to trigger snapshot capture
+      if (typeof window !== 'undefined') {
+        console.log('🚀 Dispatching agent-turn-finished event for project:', projectId);
+        window.dispatchEvent(new CustomEvent('agent-turn-finished', { detail: { projectId } }));
+      }
     },
     onError: () => setBusy(false),
     async onToolCall({ toolCall }) {
@@ -311,6 +322,29 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     };
   }, [projectId, setMessages]);
 
+  // Load project model and user settings (BYOK presence)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+        if (res.ok) {
+          const proj = await res.json();
+          if (proj?.model === 'claude-sonnet-4.5' || proj?.model === 'gpt-4.1') {
+            setModel(proj.model);
+          }
+        }
+      } catch {}
+      try {
+        const s = await fetch('/api/user-settings');
+        if (s.ok) {
+          const data = await s.json();
+          setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
+          setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+        }
+      } catch {}
+    })();
+  }, [projectId]);
+
   // Persist new messages from user/tool/etc. Also upsert assistant progressively.
   useEffect(() => {
     async function persistNewMessages() {
@@ -389,8 +423,38 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
-        <div className="text-xs uppercase tracking-wide text-muted">Agent</div>
-        <Button
+        <a href="/settings" title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
+          <Cog size={16} />
+        </a>
+        <div className="flex items-center gap-2">
+          <select
+            className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-muted"
+            value={model}
+            onChange={async (e) => {
+              const next = e.target.value as 'gpt-4.1' | 'claude-sonnet-4.5';
+              if ((next === 'gpt-4.1' && hasOpenAIKey === false) || (next === 'claude-sonnet-4.5' && hasAnthropicKey === false)) {
+                toast({ title: 'Missing API key', description: `Please add your ${next === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
+                e.target.value = model; // revert
+                return;
+              }
+              try {
+                const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ model: next }),
+                });
+                if (res.ok) setModel(next);
+                else toast({ title: 'Failed to change model' });
+              } catch (e) {
+                toast({ title: 'Failed to change model' });
+              }
+            }}
+            title="Model"
+          >
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+          </select>
+          <Button
           type="button"
           size="sm"
           variant="ghost"
@@ -409,6 +473,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         >
           Reset
         </Button>
+        </div>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 p-3 modern-scrollbar">
         {messages.map((m) => {
@@ -478,6 +543,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       <form
         onSubmit={(e) => {
+          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (model === 'claude-sonnet-4.5' && hasAnthropicKey === false)) {
+            e.preventDefault();
+            toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
+            return;
+          }
           setBusy(true);
           handleSubmit(e);
           removePromptFromUrl();
