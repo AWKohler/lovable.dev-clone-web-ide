@@ -70,6 +70,7 @@ export function Workspace({
   const [isInstalled, setIsInstalled] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
   const [hydrating, setHydrating] = useState(true);
+  const [initializationComplete, setInitializationComplete] = useState(false);
   const [expUrl, setExpUrl] = useState<string | null>(null);
   const [platform, setPlatform] = useState<'web' | 'mobile'>(
     initialPlatform ?? 'web',
@@ -191,15 +192,28 @@ export function Workspace({
         const { filename } = (event as CustomEvent).detail;
         if (
           !hydrating &&
+          initializationComplete &&
           filename &&
           !filename.includes('node_modules') &&
           !filename.includes('.git')
         ) {
+          console.log(`💾 Auto-saving project state (file changed: ${filename})...`);
           await WebContainerManager.saveProjectState(projectId);
+        } else {
+          // Log why save was skipped
+          if (hydrating) {
+            console.log(`⏭️ Skipping auto-save: still hydrating (file: ${filename})`);
+          } else if (!initializationComplete) {
+            console.log(`⏭️ Skipping auto-save: initialization not complete (file: ${filename})`);
+          } else if (!filename) {
+            console.log(`⏭️ Skipping auto-save: no filename`);
+          } else if (filename.includes('node_modules') || filename.includes('.git')) {
+            console.log(`⏭️ Skipping auto-save: system file (${filename})`);
+          }
         }
       }
     },
-    [projectId, refreshFileTree, hydrating],
+    [projectId, refreshFileTree, hydrating, initializationComplete],
   );
 
   const runInstall = useCallback(
@@ -1091,12 +1105,23 @@ export function cn(...inputs: ClassValue[]) {
         setIsLoading(false);
         setHydrating(false);
 
+        // Wait for any pending fs.watch events to complete before enabling auto-save
+        // This prevents the initial template mount from triggering auto-save
+        console.log('⏳ Waiting 1 second before enabling auto-save...');
+        setTimeout(() => {
+          console.log('✅ Initialization complete, auto-save now enabled');
+          setInitializationComplete(true);
+        }, 1000);
+
         // Return cleanup function for preview subscription
         return unsubscribe;
       } catch (error) {
         console.error('Failed to initialize WebContainer:', error);
         setIsLoading(false);
         setHydrating(false);
+        setTimeout(() => {
+          setInitializationComplete(true);
+        }, 1000);
         return () => {}; // Empty cleanup function
       }
     }
