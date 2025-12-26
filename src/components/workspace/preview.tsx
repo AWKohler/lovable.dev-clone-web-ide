@@ -56,8 +56,11 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
   const activePreview = previews[activePreviewIndex];
 
   const reloadPreview = useCallback(() => {
-    if (iframeRef.current) {
-      iframeRef.current.src = iframeRef.current.src;
+    if (iframeRef.current && iframeRef.current.src) {
+      // Add cache-busting timestamp to force fresh reload
+      const url = new URL(iframeRef.current.src);
+      url.searchParams.set('_t', Date.now().toString());
+      iframeRef.current.src = url.toString();
     }
   }, []);
 
@@ -73,9 +76,12 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
       const newPath = (e.target as HTMLInputElement).value;
       const normalizedPath = newPath.startsWith('/') ? newPath : '/' + newPath;
       setInternalPath(normalizedPath);
-      
+
       if (activePreview) {
-        setIframeUrl(activePreview.baseUrl + normalizedPath);
+        // Add cache-busting to ensure fresh content
+        const url = new URL(activePreview.baseUrl + normalizedPath);
+        url.searchParams.set('_t', Date.now().toString());
+        setIframeUrl(url.toString());
       }
     }
   }, [activePreview]);
@@ -84,8 +90,10 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
   useEffect(() => {
     const path = (currentPath ?? internalPath) || '/';
     if (activePreview) {
-      const newUrl = activePreview.baseUrl + path;
-      setIframeUrl(newUrl);
+      // Add cache-busting to prevent stale content from being displayed
+      const url = new URL(activePreview.baseUrl + path);
+      url.searchParams.set('_t', Date.now().toString());
+      setIframeUrl(url.toString());
     }
   }, [activePreview, currentPath, internalPath]);
 
@@ -479,7 +487,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
     <foreignObject x="18" y="18" width="390" height="844">
       <div class="size-full overflow-hidden rounded-[55.75px] object-contain" style="transform-origin: center center; background:#ffffff; padding-top:62px; padding-bottom:34px;">
         <div class="w-full h-full relative overflow-hidden">
-          <iframe src="${(previews[1]?.baseUrl ?? iframeUrl) || ''}" class="border-0 w-full select-none h-full" allow="geolocation; camera; microphone" style="opacity: 1;"></iframe>
+          <iframe src="${iframeUrl || ''}" class="border-0 w-full select-none h-full" allow="geolocation; camera; microphone" style="opacity: 1;"></iframe>
           <div class="flex flex-col absolute inset-0 z-[3] pointer-events-none" style="transform-origin: center center;"></div>
         </div>
       </div>
