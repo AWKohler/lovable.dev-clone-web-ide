@@ -356,10 +356,24 @@ export function Workspace({
         });
 
         // Always restore from saved state first; fall back to template if none (suppress autosave during init)
+        console.log(`🔍 Loading project state for: ${projectId}`);
         const savedState = await WebContainerManager.loadProjectState(projectId);
+        console.log(`📦 Saved state:`, savedState ? `${Object.keys(savedState).length} files` : 'null');
+
         if (savedState && Object.keys(savedState).length > 0) {
+          console.log(`🔄 Restoring ${Object.keys(savedState).length} files...`);
           await WebContainerManager.restoreFiles(container, savedState);
+          console.log(`✅ Files restored, checking /src/App.tsx...`);
+
+          // Verify restoration worked
+          try {
+            const appContent = await container.fs.readFile('/src/App.tsx', 'utf8');
+            console.log(`📄 /src/App.tsx content (first 100 chars):`, appContent.substring(0, 100));
+          } catch (e) {
+            console.log(`❌ Could not read /src/App.tsx:`, e);
+          }
         } else {
+          console.log(`⚠️ No saved state found, mounting template...`);
           if (platform === 'mobile') {
             // Populate Expo project files
             await container.mount({

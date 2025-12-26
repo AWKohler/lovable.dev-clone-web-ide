@@ -255,12 +255,17 @@ class IndexedDBStorage {
   }
 
   async restoreFiles(container: WebContainer, files: Record<string, { type: string; content?: string }>): Promise<void> {
+    console.log(`🗑️ Clearing existing files (keeping node_modules)...`);
     // Clear existing files first (except node_modules)
     try {
       const entries = await container.fs.readdir('/', { withFileTypes: true });
+      console.log(`📁 Found ${entries.length} entries in root:`, entries.map(e => e.name));
       for (const entry of entries) {
         if (entry.name !== 'node_modules' && entry.name !== '.git') {
+          console.log(`  🗑️ Removing: /${entry.name}`);
           await container.fs.rm(`/${entry.name}`, { recursive: true, force: true });
+        } else {
+          console.log(`  ⏭️ Skipping: /${entry.name}`);
         }
       }
     } catch (error) {
@@ -269,7 +274,8 @@ class IndexedDBStorage {
 
     // Restore files
     const sortedPaths = Object.keys(files).sort((a, b) => a.length - b.length);
-    
+    console.log(`📦 Restoring ${sortedPaths.length} files/folders...`);
+
     for (const filePath of sortedPaths) {
       const fileData = files[filePath];
       
@@ -286,8 +292,13 @@ class IndexedDBStorage {
           if (parentDir !== '/') {
             await container.fs.mkdir(parentDir, { recursive: true });
           }
-          
+
           await container.fs.writeFile(filePath, fileData.content);
+
+          // Log key files for debugging
+          if (filePath === '/src/App.tsx' || filePath === '/index.html') {
+            console.log(`✍️ Wrote ${filePath} (${fileData.content.length} bytes, first 100 chars):`, fileData.content.substring(0, 100));
+          }
         } catch (error) {
           console.warn(`Failed to restore file ${filePath}:`, error);
         }
