@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -98,8 +98,8 @@ export const projectFiles = pgTable('project_files', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   projectPathUnique: uniqueIndex('project_files_project_path_unique').on(t.projectId, t.path),
-  projectIdIdx: uniqueIndex('project_files_project_id_idx').on(t.projectId),
-  hashIdx: uniqueIndex('project_files_hash_idx').on(t.hash),
+  projectIdIdx: index('project_files_project_id_idx').on(t.projectId),
+  hashIdx: index('project_files_hash_idx').on(t.hash),
 }));
 
 export type ProjectFile = typeof projectFiles.$inferSelect;
@@ -118,7 +118,7 @@ export const projectAssets = pgTable('project_assets', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   projectPathUnique: uniqueIndex('project_assets_project_path_unique').on(t.projectId, t.path),
-  projectIdIdx: uniqueIndex('project_assets_project_id_idx').on(t.projectId),
+  projectIdIdx: index('project_assets_project_id_idx').on(t.projectId),
 }));
 
 export type ProjectAsset = typeof projectAssets.$inferSelect;
@@ -134,7 +134,7 @@ export const projectSyncManifests = pgTable('project_sync_manifests', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   projectUnique: uniqueIndex('project_sync_manifests_project_unique').on(t.projectId),
-  projectIdIdx: uniqueIndex('project_sync_manifests_project_id_idx').on(t.projectId),
+  projectIdIdx: index('project_sync_manifests_project_id_idx').on(t.projectId),
 }));
 
 export type ProjectSyncManifest = typeof projectSyncManifests.$inferSelect;

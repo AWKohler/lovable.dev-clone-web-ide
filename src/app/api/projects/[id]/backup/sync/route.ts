@@ -26,10 +26,12 @@ export async function POST(
     // 1. Verify authentication
     const { userId } = await auth();
     if (!userId) {
+      console.error('Sync error: Unauthorized');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id: projectId } = await params;
+    console.log(`☁️  Sync request for project ${projectId} from user ${userId}`);
 
     // 2. Verify project ownership
     const db = getDb();
@@ -39,11 +41,13 @@ export async function POST(
       .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
 
     if (!project) {
+      console.error(`Sync error: Project ${projectId} not found for user ${userId}`);
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     // 3. Parse request body
     const body: SyncRequest = await request.json();
+    console.log(`📦 Sync payload: ${body.files.length} files, ${body.deletedPaths.length} deleted`);
     const { files, deletedPaths, manifest } = body;
 
     let synced = 0;
@@ -154,8 +158,11 @@ export async function POST(
     });
   } catch (error) {
     console.error('Error syncing files:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Stack:', errorStack);
     return NextResponse.json(
-      { error: 'Failed to sync files' },
+      { error: 'Failed to sync files', details: errorMessage },
       { status: 500 }
     );
   }

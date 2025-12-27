@@ -265,7 +265,9 @@ export class CloudBackupManager {
         });
 
         if (!res.ok) {
-          throw new Error(`Sync failed: ${res.statusText}`);
+          const errorText = await res.text();
+          console.error('Sync API error:', res.status, errorText);
+          throw new Error(`Sync failed (${res.status}): ${errorText}`);
         }
 
         const result: SyncResponse = await res.json();
