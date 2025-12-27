@@ -80,9 +80,8 @@ export function Workspace({
     lastSyncAt: Date | null;
   }>({ syncing: false, lastSyncAt: null });
 
-  // Prevent multiple initializations (React Strict Mode causes double-mounting in dev)
+  // Prevent concurrent initializations within same render
   const initializingRef = useRef(false);
-  const initializedRef = useRef(false);
 
   // Fetch platform from API if not provided
   useEffect(() => {
@@ -354,8 +353,8 @@ export function Workspace({
 
   useEffect(() => {
     async function initWebContainer() {
-      // Prevent concurrent initializations
-      if (initializingRef.current || initializedRef.current) {
+      // Prevent concurrent initializations within same mount
+      if (initializingRef.current) {
         return;
       }
       initializingRef.current = true;
@@ -408,8 +407,6 @@ export function Workspace({
             // Wait for pending fs.watch events before enabling auto-save
             setTimeout(() => {
               setInitializationComplete(true);
-              initializedRef.current = true;
-              initializingRef.current = false;
             }, 1000);
 
             // Return cleanup function
@@ -1140,8 +1137,6 @@ export function cn(...inputs: ClassValue[]) {
         // This prevents the initial template mount from triggering auto-save
         setTimeout(() => {
           setInitializationComplete(true);
-          initializedRef.current = true;
-          initializingRef.current = false;
         }, 1000);
 
         // Return cleanup function for preview subscription
@@ -1150,7 +1145,6 @@ export function cn(...inputs: ClassValue[]) {
         console.error('Failed to initialize WebContainer:', error);
         setIsLoading(false);
         setHydrating(false);
-        initializingRef.current = false;
         setTimeout(() => {
           setInitializationComplete(true);
         }, 1000);
@@ -1168,6 +1162,9 @@ export function cn(...inputs: ClassValue[]) {
     window.addEventListener('webcontainer-fs-change', handleFileSystemChange);
 
     return () => {
+      // Reset initialization guard so component can re-initialize on remount
+      initializingRef.current = false;
+
       window.removeEventListener(
         'webcontainer-fs-change',
         handleFileSystemChange,
