@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { DevServerManager } from '@/lib/dev-server';
@@ -79,6 +79,10 @@ export function Workspace({
     syncing: boolean;
     lastSyncAt: Date | null;
   }>({ syncing: false, lastSyncAt: null });
+
+  // Prevent multiple initializations (React Strict Mode causes double-mounting in dev)
+  const initializingRef = useRef(false);
+  const initializedRef = useRef(false);
 
   // Fetch platform from API if not provided
   useEffect(() => {
@@ -350,6 +354,12 @@ export function Workspace({
 
   useEffect(() => {
     async function initWebContainer() {
+      // Prevent concurrent initializations
+      if (initializingRef.current || initializedRef.current) {
+        return;
+      }
+      initializingRef.current = true;
+
       setHydrating(true);
       try {
         const container = await WebContainerManager.getInstance();
@@ -379,21 +389,13 @@ export function Workspace({
         console.log(`📦 Saved state:`, savedState ? `${Object.keys(savedState).length} files` : 'null');
 
         if (savedState && Object.keys(savedState).length > 0) {
-          console.log(`🔄 Restoring ${Object.keys(savedState).length} files...`);
+          console.log(`🔄 Restoring ${Object.keys(savedState).length} files from IndexedDB...`);
           await WebContainerManager.restoreFiles(container, savedState);
-          console.log(`✅ Files restored, checking /src/App.tsx...`);
-
-          // Verify restoration worked
-          try {
-            const appContent = await container.fs.readFile('/src/App.tsx', 'utf8');
-            console.log(`📄 /src/App.tsx content (first 100 chars):`, appContent.substring(0, 100));
-          } catch (e) {
-            console.log(`❌ Could not read /src/App.tsx:`, e);
-          }
+          console.log(`✅ Files restored from IndexedDB`);
         } else {
-          console.log(`⚠️ No local state found, checking cloud backup...`);
+          console.log(`📭 No local state found, trying cloud backup...`);
 
-          // NEW: Try restoring from cloud
+          // Try restoring from cloud (only for existing projects with backups)
           const { CloudBackupManager } = await import('@/lib/cloud-backup');
           const restored = await CloudBackupManager.getInstance().restoreFromCloud(projectId, container);
 
@@ -404,17 +406,18 @@ export function Workspace({
             setHydrating(false);
 
             // Wait for pending fs.watch events before enabling auto-save
-            console.log('⏳ Waiting 1 second before enabling auto-save...');
             setTimeout(() => {
-              console.log('✅ Initialization complete, auto-save now enabled');
               setInitializationComplete(true);
+              initializedRef.current = true;
+              initializingRef.current = false;
             }, 1000);
 
             // Return cleanup function
             return unsubscribe;
-          } else {
-            console.log(`⚠️ No cloud backup found, mounting template...`);
           }
+
+          // No backup found - mount template (normal for new projects)
+          console.log(`📦 No backup found, mounting template...`);
 
           if (platform === 'mobile') {
             // Populate Expo project files
@@ -1135,10 +1138,10 @@ export function cn(...inputs: ClassValue[]) {
 
         // Wait for any pending fs.watch events to complete before enabling auto-save
         // This prevents the initial template mount from triggering auto-save
-        console.log('⏳ Waiting 1 second before enabling auto-save...');
         setTimeout(() => {
-          console.log('✅ Initialization complete, auto-save now enabled');
           setInitializationComplete(true);
+          initializedRef.current = true;
+          initializingRef.current = false;
         }, 1000);
 
         // Return cleanup function for preview subscription
@@ -1147,6 +1150,7 @@ export function cn(...inputs: ClassValue[]) {
         console.error('Failed to initialize WebContainer:', error);
         setIsLoading(false);
         setHydrating(false);
+        initializingRef.current = false;
         setTimeout(() => {
           setInitializationComplete(true);
         }, 1000);

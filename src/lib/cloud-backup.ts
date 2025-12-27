@@ -72,15 +72,23 @@ export class CloudBackupManager {
       // 1. Fetch cloud backup
       const res = await fetch(`/api/projects/${projectId}/backup/restore`);
       if (!res.ok) {
-        console.log('No cloud backup found');
+        if (res.status === 404) {
+          // No backup exists yet - this is normal for new projects
+          return false;
+        }
+        if (res.status === 401) {
+          // Auth not ready yet - silently fail, will use template
+          return false;
+        }
+        console.warn(`Cloud restore failed: ${res.status} ${res.statusText}`);
         return false;
       }
 
       const data = await res.json();
       const { files, folders } = data;
 
-      if (files.length === 0) {
-        console.log('Cloud backup is empty');
+      if (!files || files.length === 0) {
+        // No files backed up yet - normal for new projects
         return false;
       }
 
