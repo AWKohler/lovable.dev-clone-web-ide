@@ -54,68 +54,67 @@ export async function POST(
     let skipped = 0;
     const errors: string[] = [];
 
-    // 4. Process files in a transaction
-    await db.transaction(async (tx) => {
-      // Get existing files to check if hash matches (optimization)
-      const existingFiles = await tx
-        .select()
-        .from(projectFiles)
-        .where(eq(projectFiles.projectId, projectId));
+    // 4. Get existing files to check if hash matches (optimization)
+    const existingFiles = await db
+      .select()
+      .from(projectFiles)
+      .where(eq(projectFiles.projectId, projectId));
 
-      const existingHashes = new Map(
-        existingFiles.map((f) => [f.path, f.hash])
-      );
+    const existingHashes = new Map(
+      existingFiles.map((f) => [f.path, f.hash])
+    );
 
-      // Upsert changed files
-      for (const file of files) {
-        try {
-          // Skip if hash matches (no change)
-          if (existingHashes.get(file.path) === file.hash) {
-            skipped++;
-            continue;
-          }
+    // 5. Upsert changed files (each operation is atomic)
+    for (const file of files) {
+      try {
+        // Skip if hash matches (no change)
+        if (existingHashes.get(file.path) === file.hash) {
+          skipped++;
+          continue;
+        }
 
-          // Only sync text files ≤1MB to Postgres
-          // Larger files or binary assets should go through /backup/assets endpoint
-          if (file.size > 1024 * 1024) {
-            errors.push(`${file.path}: File too large (${file.size} bytes)`);
-            continue;
-          }
+        // Only sync text files ≤1MB to Postgres
+        // Larger files or binary assets should go through /backup/assets endpoint
+        if (file.size > 1024 * 1024) {
+          errors.push(`${file.path}: File too large (${file.size} bytes)`);
+          continue;
+        }
 
-          // Upsert to project_files
-          await tx
-            .insert(projectFiles)
-            .values({
-              projectId,
-              path: file.path,
+        // Upsert to project_files
+        await db
+          .insert(projectFiles)
+          .values({
+            projectId,
+            path: file.path,
+            content: file.content,
+            hash: file.hash,
+            size: file.size,
+            mimeType: file.mimeType || 'text/plain',
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [projectFiles.projectId, projectFiles.path],
+            set: {
               content: file.content,
               hash: file.hash,
               size: file.size,
               mimeType: file.mimeType || 'text/plain',
               updatedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: [projectFiles.projectId, projectFiles.path],
-              set: {
-                content: file.content,
-                hash: file.hash,
-                size: file.size,
-                mimeType: file.mimeType || 'text/plain',
-                updatedAt: new Date(),
-              },
-            });
+            },
+          });
 
-          synced++;
-        } catch (error) {
-          errors.push(
-            `${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`
-          );
-        }
+        synced++;
+      } catch (error) {
+        errors.push(
+          `${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
+    }
 
-      // Delete removed files
-      if (deletedPaths.length > 0) {
-        await tx
+    // 6. Delete removed files
+    if (deletedPaths.length > 0) {
+      try {
+        await db
           .delete(projectFiles)
           .where(
             and(
@@ -123,10 +122,15 @@ export async function POST(
               inArray(projectFiles.path, deletedPaths)
             )
           );
+      } catch (error) {
+        console.error('Error deleting files:', error);
+        errors.push(`Failed to delete ${deletedPaths.length} files`);
       }
+    }
 
-      // Update manifest
-      await tx
+    // 7. Update manifest
+    try {
+      await db
         .insert(projectSyncManifests)
         .values({
           projectId,
@@ -144,7 +148,10 @@ export async function POST(
             lastSyncAt: new Date(),
           },
         });
-    });
+    } catch (error) {
+      console.error('Error updating manifest:', error);
+      errors.push('Failed to update manifest');
+    }
 
     console.log(
       `✅ Cloud sync for project ${projectId}: synced=${synced}, skipped=${skipped}, errors=${errors.length}`
