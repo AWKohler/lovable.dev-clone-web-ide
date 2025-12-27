@@ -15,7 +15,7 @@ export async function POST(
     // 1. Verify authentication
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse('Unauthorized', { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id: projectId } = await params;
@@ -41,7 +41,7 @@ export async function POST(
       .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
 
     if (!project) {
-      return NextResponse('Project not found', { status: 404 });
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     // 4. Check file size (reject if >1MB for cloud backup)
