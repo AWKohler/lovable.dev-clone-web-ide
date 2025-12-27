@@ -174,8 +174,18 @@ class IndexedDBStorage {
 
       // Record save time
       this.lastSaveTime.set(projectId, Date.now());
-      
+
       console.log(`SAVE webcontainer-${projectId} files: ${records.length} size: ${(totalSize / 1024).toFixed(2)}KB compressed: ${(compressedSize / 1024).toFixed(2)}KB`);
+
+      // NEW: Trigger cloud sync after IndexedDB save completes
+      if (typeof window !== 'undefined') {
+        // Dynamic import to avoid circular dependencies
+        import('./cloud-backup').then(({ CloudBackupManager }) => {
+          CloudBackupManager.getInstance().syncToCloud(projectId, container);
+        }).catch(error => {
+          console.error('Failed to trigger cloud sync:', error);
+        });
+      }
     } catch (error) {
       console.error('Failed to save to IndexedDB:', error);
       throw error;

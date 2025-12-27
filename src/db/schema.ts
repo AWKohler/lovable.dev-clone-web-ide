@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, text, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -84,3 +84,58 @@ export const userSettings = pgTable('user_settings', {
 
 export type UserSettings = typeof userSettings.$inferSelect;
 export type NewUserSettings = typeof userSettings.$inferInsert;
+
+// Cloud backup tables for project files
+export const projectFiles = pgTable('project_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+  content: text('content').notNull(),
+  hash: text('hash').notNull(),
+  size: integer('size').notNull(),
+  mimeType: text('mime_type'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectPathUnique: uniqueIndex('project_files_project_path_unique').on(t.projectId, t.path),
+  projectIdIdx: uniqueIndex('project_files_project_id_idx').on(t.projectId),
+  hashIdx: uniqueIndex('project_files_hash_idx').on(t.hash),
+}));
+
+export type ProjectFile = typeof projectFiles.$inferSelect;
+export type NewProjectFile = typeof projectFiles.$inferInsert;
+
+export const projectAssets = pgTable('project_assets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+  uploadThingUrl: text('upload_thing_url').notNull(),
+  uploadThingKey: text('upload_thing_key').notNull(),
+  hash: text('hash').notNull(),
+  size: integer('size').notNull(),
+  mimeType: text('mime_type'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectPathUnique: uniqueIndex('project_assets_project_path_unique').on(t.projectId, t.path),
+  projectIdIdx: uniqueIndex('project_assets_project_id_idx').on(t.projectId),
+}));
+
+export type ProjectAsset = typeof projectAssets.$inferSelect;
+export type NewProjectAsset = typeof projectAssets.$inferInsert;
+
+export const projectSyncManifests = pgTable('project_sync_manifests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  fileManifest: jsonb('file_manifest').notNull(),
+  totalFiles: integer('total_files').notNull().default(0),
+  totalSize: bigint('total_size', { mode: 'number' }).notNull().default(0),
+  lastSyncAt: timestamp('last_sync_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  projectUnique: uniqueIndex('project_sync_manifests_project_unique').on(t.projectId),
+  projectIdIdx: uniqueIndex('project_sync_manifests_project_id_idx').on(t.projectId),
+}));
+
+export type ProjectSyncManifest = typeof projectSyncManifests.$inferSelect;
+export type NewProjectSyncManifest = typeof projectSyncManifests.$inferInsert;

@@ -75,6 +75,10 @@ export function Workspace({
   const [platform, setPlatform] = useState<'web' | 'mobile'>(
     initialPlatform ?? 'web',
   );
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<{
+    syncing: boolean;
+    lastSyncAt: Date | null;
+  }>({ syncing: false, lastSyncAt: null });
 
   // Fetch platform from API if not provided
   useEffect(() => {
@@ -387,7 +391,31 @@ export function Workspace({
             console.log(`❌ Could not read /src/App.tsx:`, e);
           }
         } else {
-          console.log(`⚠️ No saved state found, mounting template...`);
+          console.log(`⚠️ No local state found, checking cloud backup...`);
+
+          // NEW: Try restoring from cloud
+          const { CloudBackupManager } = await import('@/lib/cloud-backup');
+          const restored = await CloudBackupManager.getInstance().restoreFromCloud(projectId, container);
+
+          if (restored) {
+            console.log('✅ Restored from cloud backup');
+            await refreshFileTree(container);
+            setIsLoading(false);
+            setHydrating(false);
+
+            // Wait for pending fs.watch events before enabling auto-save
+            console.log('⏳ Waiting 1 second before enabling auto-save...');
+            setTimeout(() => {
+              console.log('✅ Initialization complete, auto-save now enabled');
+              setInitializationComplete(true);
+            }, 1000);
+
+            // Return cleanup function
+            return unsubscribe;
+          } else {
+            console.log(`⚠️ No cloud backup found, mounting template...`);
+          }
+
           if (platform === 'mobile') {
             // Populate Expo project files
             await container.mount({
@@ -1245,6 +1273,27 @@ export function cn(...inputs: ClassValue[]) {
     };
   }, [projectId, previews, activePreviewIndex]);
 
+  // Listen for cloud sync events
+  useEffect(() => {
+    const handleSyncStart = () => setCloudSyncStatus({ syncing: true, lastSyncAt: null });
+    const handleSyncComplete = () => setCloudSyncStatus({ syncing: false, lastSyncAt: new Date() });
+    const handleSyncError = () => setCloudSyncStatus(prev => ({ syncing: false, lastSyncAt: prev.lastSyncAt }));
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('cloud-sync-start', handleSyncStart);
+      window.addEventListener('cloud-sync-complete', handleSyncComplete);
+      window.addEventListener('cloud-sync-error', handleSyncError);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('cloud-sync-start', handleSyncStart);
+        window.removeEventListener('cloud-sync-complete', handleSyncComplete);
+        window.removeEventListener('cloud-sync-error', handleSyncError);
+      }
+    };
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1485,6 +1534,22 @@ export function cn(...inputs: ClassValue[]) {
                 </div>
               </>
             )}
+
+            {/* Cloud Sync Status Indicator */}
+            <div className="text-xs text-muted flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated">
+              {cloudSyncStatus.syncing ? (
+                <>
+                  <Loader2 size={12} className="animate-spin text-blue-500" />
+                  <span>Syncing...</span>
+                </>
+              ) : cloudSyncStatus.lastSyncAt ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span>Synced {timeAgo(cloudSyncStatus.lastSyncAt)}</span>
+                </>
+              ) : null}
+            </div>
+
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8' } }}
@@ -1635,4 +1700,16 @@ function getLanguageFromFilename(filename: string): string {
   };
 
   return languageMap[ext || ''] || 'plaintext';
+}
+
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
