@@ -1163,38 +1163,29 @@ export function cn(...inputs: ClassValue[]) {
     };
   }, []);
 
-  // Capture HTML from iframe when dev server starts
+  // Capture HTML from preview URL when dev server starts
   useEffect(() => {
     // Only capture once per dev server session
     if (previews.length > 0 && !htmlCapturedRef.current && isDevServerRunning) {
-      // Wait a bit for the page to load in the iframe
+      const activePreview = previews[activePreviewIndex];
+
+      if (!activePreview?.baseUrl) {
+        return;
+      }
+
+      // Wait a bit for the page to load
       const captureTimer = setTimeout(async () => {
         try {
-          console.log('📄 Capturing HTML from iframe...');
+          console.log('📄 Capturing HTML from preview URL...');
 
-          // Find the preview iframe
-          const iframe = document.querySelector('iframe[data-preview-iframe]') as HTMLIFrameElement;
+          const previewUrl = activePreview.baseUrl;
+          console.log(`🔗 Preview URL: ${previewUrl}`);
 
-          if (!iframe || !iframe.contentDocument) {
-            console.warn('⚠️ Preview iframe not found or not accessible');
-            return;
-          }
-
-          // Get the outer HTML from the iframe
-          const html = iframe.contentDocument.documentElement.outerHTML;
-
-          if (!html || html.length < 100) {
-            console.warn('⚠️ HTML content too short or empty');
-            return;
-          }
-
-          console.log(`📄 Captured ${html.length} bytes of HTML`);
-
-          // Upload to UploadThing
+          // Fetch HTML through backend (to bypass CORS)
           const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ html }),
+            body: JSON.stringify({ url: previewUrl }),
           });
 
           if (!response.ok) {
@@ -1225,7 +1216,7 @@ export function cn(...inputs: ClassValue[]) {
     if (previews.length === 0) {
       htmlCapturedRef.current = false;
     }
-  }, [previews, isDevServerRunning, projectId, toast]);
+  }, [previews, isDevServerRunning, projectId, toast, activePreviewIndex]);
 
   // Listen for cloud sync events
   useEffect(() => {
