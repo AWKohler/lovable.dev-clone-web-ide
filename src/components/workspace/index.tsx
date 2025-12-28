@@ -1256,11 +1256,32 @@ export function cn(...inputs: ClassValue[]) {
           const result = await response.json();
           console.log("✅ HTML snapshot saved:", result.htmlSnapshotUrl);
 
-          // Show toast notification
-          toast({
-            title: "Thumbnail saved",
-            description: "Project snapshot captured successfully",
-          });
+          // Generate thumbnail from OG image
+          console.log("🖼️  Generating thumbnail...");
+          const thumbnailResponse = await fetch(
+            `/api/projects/${projectId}/generate-thumbnail`,
+            {
+              method: "POST",
+            }
+          );
+
+          if (thumbnailResponse.ok) {
+            const thumbnailResult = await thumbnailResponse.json();
+            console.log("✅ Thumbnail generated:", thumbnailResult.thumbnailUrl);
+
+            // Show toast notification
+            toast({
+              title: "Thumbnail saved",
+              description: "Project snapshot captured successfully",
+            });
+          } else {
+            console.error("Failed to generate thumbnail");
+            // Still show toast for HTML snapshot
+            toast({
+              title: "Snapshot saved",
+              description: "Thumbnail generation failed",
+            });
+          }
 
           htmlCapturedRef.current = true;
         } catch (error) {
