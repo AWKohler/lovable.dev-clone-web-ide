@@ -1217,27 +1217,19 @@ export function cn(...inputs: ClassValue[]) {
   // Listen for HTML snapshot messages from iframe
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      console.log(
-        "🔔 Received message from origin:",
-        event.origin,
-        "type:",
-        event.data?.type,
-      );
 
       // Security: Only accept messages from StackBlitz/WebContainer domains
       if (
         !event.origin.includes("stackblitz") &&
         !event.origin.includes("webcontainer")
       ) {
-        console.log("⚠️ Ignoring message from untrusted origin:", event.origin);
-        return;
+        return; // Silently ignore untrusted origins
       }
 
       if (event.data?.type === "HTML_SNAPSHOT" && event.data?.html) {
         // Only capture once per dev server session
         if (htmlCapturedRef.current) {
-          console.log("⏭️ Already captured HTML for this session, skipping");
-          return;
+          return; // Already captured, silently skip
         }
 
         try {
