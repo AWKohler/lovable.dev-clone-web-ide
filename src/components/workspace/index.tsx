@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { WebContainer } from '@webcontainer/api';
-import { WebContainerManager } from '@/lib/webcontainer';
-import { DevServerManager } from '@/lib/dev-server';
-import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
-import { useToast } from '@/components/ui/toast';
-import { FileTree } from './file-tree';
-import { FileSearch } from './file-search';
-import { AgentPanel } from '@/components/agent/AgentPanel';
-import { CodeEditor } from './code-editor';
-import { TerminalTabs } from './terminal-tabs';
-import { Preview } from './preview';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabOption } from '@/components/ui/tabs';
+import { useEffect, useState, useCallback, useRef } from "react";
+import { WebContainer } from "@webcontainer/api";
+import { WebContainerManager } from "@/lib/webcontainer";
+import { DevServerManager } from "@/lib/dev-server";
+import { getPreviewStore, PreviewInfo } from "@/lib/preview-store";
+import { useToast } from "@/components/ui/toast";
+import { FileTree } from "./file-tree";
+import { FileSearch } from "./file-search";
+import { AgentPanel } from "@/components/agent/AgentPanel";
+import { CodeEditor } from "./code-editor";
+import { TerminalTabs } from "./terminal-tabs";
+import { Preview } from "./preview";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabOption } from "@/components/ui/tabs";
 import {
   PanelLeft,
   Save,
@@ -26,18 +26,18 @@ import {
   Tablet,
   Smartphone,
   Github,
-} from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
-import { SupabasePicker } from '@/components/supabase/SupabasePicker';
-import { cn } from '@/lib/utils';
-import '@/lib/debug-storage'; // Make debug utilities available in console
+} from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
+import { SupabasePicker } from "@/components/supabase/SupabasePicker";
+import { cn } from "@/lib/utils";
+import "@/lib/debug-storage"; // Make debug utilities available in console
 
-type WorkspaceView = 'code' | 'preview';
+type WorkspaceView = "code" | "preview";
 
 interface WorkspaceProps {
   projectId: string;
   initialPrompt?: string;
-  platform?: 'web' | 'mobile';
+  platform?: "web" | "mobile";
 }
 
 export function Workspace({
@@ -46,23 +46,23 @@ export function Workspace({
   platform: initialPlatform,
 }: WorkspaceProps) {
   const [webcontainer, setWebcontainer] = useState<WebContainer | null>(null);
-  const [files, setFiles] = useState<Record<string, { type: 'file' | 'folder' }>>(
-    {},
-  );
+  const [files, setFiles] = useState<
+    Record<string, { type: "file" | "folder" }>
+  >({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
+  const [fileContent, setFileContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'search'>('files');
+  const [sidebarTab, setSidebarTab] = useState<"files" | "search">("files");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [currentView, setCurrentView] = useState<WorkspaceView>('preview');
+  const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   // Preview UI state lifted to combine headers
-  const [previewPath, setPreviewPath] = useState<string>('/');
+  const [previewPath, setPreviewPath] = useState<string>("/");
   const [previewDevice, setPreviewDevice] = useState<
-    'desktop' | 'tablet' | 'mobile'
-  >('desktop');
+    "desktop" | "tablet" | "mobile"
+  >("desktop");
   const [previewLandscape] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [isDevServerRunning, setIsDevServerRunning] = useState(false);
@@ -72,8 +72,8 @@ export function Workspace({
   const [hydrating, setHydrating] = useState(true);
   const [initializationComplete, setInitializationComplete] = useState(false);
   const [expUrl, setExpUrl] = useState<string | null>(null);
-  const [platform, setPlatform] = useState<'web' | 'mobile'>(
-    initialPlatform ?? 'web',
+  const [platform, setPlatform] = useState<"web" | "mobile">(
+    initialPlatform ?? "web",
   );
   const [cloudSyncStatus, setCloudSyncStatus] = useState<{
     syncing: boolean;
@@ -99,11 +99,11 @@ export function Workspace({
           );
           if (res.ok) {
             const proj = await res.json();
-            if (proj?.platform === 'mobile' || proj?.platform === 'web')
+            if (proj?.platform === "mobile" || proj?.platform === "web")
               setPlatform(proj.platform);
           }
         } catch (e) {
-          console.warn('Failed to load project platform', e);
+          console.warn("Failed to load project platform", e);
         }
       })();
     }
@@ -113,8 +113,8 @@ export function Workspace({
   const getFileStructure = useCallback(
     async (
       container: WebContainer,
-    ): Promise<Record<string, { type: 'file' | 'folder' }>> => {
-      const files: Record<string, { type: 'file' | 'folder' }> = {};
+    ): Promise<Record<string, { type: "file" | "folder" }>> => {
+      const files: Record<string, { type: "file" | "folder" }> = {};
 
       async function processDirectory(path: string) {
         try {
@@ -124,13 +124,13 @@ export function Workspace({
 
           for (const entry of entries) {
             const fullPath =
-              path === '/' ? `/${entry.name}` : `${path}/${entry.name}`;
+              path === "/" ? `/${entry.name}` : `${path}/${entry.name}`;
 
             if (entry.isDirectory()) {
-              files[fullPath] = { type: 'folder' };
+              files[fullPath] = { type: "folder" };
               await processDirectory(fullPath);
             } else {
-              files[fullPath] = { type: 'file' };
+              files[fullPath] = { type: "file" };
             }
           }
         } catch (error) {
@@ -138,7 +138,7 @@ export function Workspace({
         }
       }
 
-      await processDirectory('/');
+      await processDirectory("/");
       return files;
     },
     [],
@@ -158,7 +158,7 @@ export function Workspace({
     try {
       await webcontainer.fs.writeFile(selectedFile, fileContent);
       setHasUnsavedChanges(false);
-      console.log('File saved:', selectedFile);
+      console.log("File saved:", selectedFile);
 
       // Save project state
       await WebContainerManager.saveProjectState(projectId);
@@ -166,21 +166,21 @@ export function Workspace({
       // Refresh file tree to ensure it's in sync
       await refreshFileTree(webcontainer);
     } catch (error) {
-      console.error('Failed to save file:', error);
+      console.error("Failed to save file:", error);
     }
   }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
 
   const handleFileSelect = useCallback(
     async (filePath: string) => {
-      if (!webcontainer || files[filePath]?.type !== 'file') return;
+      if (!webcontainer || files[filePath]?.type !== "file") return;
 
       try {
-        const content = await webcontainer.fs.readFile(filePath, 'utf8');
+        const content = await webcontainer.fs.readFile(filePath, "utf8");
         setSelectedFile(filePath);
         setFileContent(content);
         setHasUnsavedChanges(false);
       } catch (error) {
-        console.error('Failed to read file:', error);
+        console.error("Failed to read file:", error);
       }
     },
     [webcontainer, files],
@@ -207,20 +207,29 @@ export function Workspace({
           !hydrating &&
           initializationComplete &&
           filename &&
-          !filename.includes('node_modules') &&
-          !filename.includes('.git')
+          !filename.includes("node_modules") &&
+          !filename.includes(".git")
         ) {
-          console.log(`💾 Auto-saving project state (file changed: ${filename})...`);
+          console.log(
+            `💾 Auto-saving project state (file changed: ${filename})...`,
+          );
           await WebContainerManager.saveProjectState(projectId);
         } else {
           // Log why save was skipped
           if (hydrating) {
-            console.log(`⏭️ Skipping auto-save: still hydrating (file: ${filename})`);
+            console.log(
+              `⏭️ Skipping auto-save: still hydrating (file: ${filename})`,
+            );
           } else if (!initializationComplete) {
-            console.log(`⏭️ Skipping auto-save: initialization not complete (file: ${filename})`);
+            console.log(
+              `⏭️ Skipping auto-save: initialization not complete (file: ${filename})`,
+            );
           } else if (!filename) {
             console.log(`⏭️ Skipping auto-save: no filename`);
-          } else if (filename.includes('node_modules') || filename.includes('.git')) {
+          } else if (
+            filename.includes("node_modules") ||
+            filename.includes(".git")
+          ) {
             console.log(`⏭️ Skipping auto-save: system file (${filename})`);
           }
         }
@@ -235,7 +244,7 @@ export function Workspace({
       try {
         // Remove node_modules if it exists
         try {
-          await container.fs.rm('/node_modules', {
+          await container.fs.rm("/node_modules", {
             recursive: true,
             force: true,
           });
@@ -245,20 +254,20 @@ export function Workspace({
 
         // Run installer based on platform
         const installProcess =
-          platform === 'mobile'
-            ? await container.spawn('pnpm', ['install'])
-            : await container.spawn('pnpm', ['install']);
+          platform === "mobile"
+            ? await container.spawn("pnpm", ["install"])
+            : await container.spawn("pnpm", ["install"]);
         const exitCode = await installProcess.exit;
 
         if (exitCode === 0) {
           setIsInstalled(true);
-          console.log('install completed successfully');
+          console.log("install completed successfully");
         } else {
-          console.error('install failed with exit code:', exitCode);
+          console.error("install failed with exit code:", exitCode);
           setIsInstalled(false);
         }
       } catch (error) {
-        console.error('Failed to run install:', error);
+        console.error("Failed to run install:", error);
         setIsInstalled(false);
       } finally {
         setIsInstalling(false);
@@ -278,7 +287,7 @@ export function Workspace({
         const res = await DevServerManager.start();
         console.log(res.message);
       } catch (error) {
-        console.error('Failed to start dev server:', error);
+        console.error("Failed to start dev server:", error);
       } finally {
         setIsStartingServer(false);
       }
@@ -286,19 +295,16 @@ export function Workspace({
     [isInstalled, runInstall],
   );
 
-  const stopDevServer = useCallback(
-    async (_container?: WebContainer) => {
-      try {
-        console.log('🛑 Stopping dev server...');
-        const res = await DevServerManager.stop();
-        console.log(res.message);
-        setExpUrl(null);
-      } catch (error) {
-        console.error('Failed to stop dev server:', error);
-      }
-    },
-    [],
-  );
+  const stopDevServer = useCallback(async (_container?: WebContainer) => {
+    try {
+      console.log("🛑 Stopping dev server...");
+      const res = await DevServerManager.stop();
+      console.log(res.message);
+      setExpUrl(null);
+    } catch (error) {
+      console.error("Failed to stop dev server:", error);
+    }
+  }, []);
 
   const handlePlayStopClick = useCallback(async () => {
     if (!webcontainer) return;
@@ -334,7 +340,7 @@ export function Workspace({
           setPreviews((prevPreviews) => {
             // Auto-switch to preview tab when first server starts
             if (newPreviews.length > 0 && prevPreviews.length === 0) {
-              setCurrentView('preview');
+              setCurrentView("preview");
             }
             return newPreviews;
           });
@@ -345,22 +351,32 @@ export function Workspace({
 
         // Always restore from saved state first; fall back to template if none (suppress autosave during init)
         console.log(`🔍 Loading project state for: ${projectId}`);
-        const savedState = await WebContainerManager.loadProjectState(projectId);
-        console.log(`📦 Saved state:`, savedState ? `${Object.keys(savedState).length} files` : 'null');
+        const savedState =
+          await WebContainerManager.loadProjectState(projectId);
+        console.log(
+          `📦 Saved state:`,
+          savedState ? `${Object.keys(savedState).length} files` : "null",
+        );
 
         if (savedState && Object.keys(savedState).length > 0) {
-          console.log(`🔄 Restoring ${Object.keys(savedState).length} files from IndexedDB...`);
+          console.log(
+            `🔄 Restoring ${Object.keys(savedState).length} files from IndexedDB...`,
+          );
           await WebContainerManager.restoreFiles(container, savedState);
           console.log(`✅ Files restored from IndexedDB`);
         } else {
           console.log(`📭 No local state found, trying cloud backup...`);
 
           // Try restoring from cloud (only for existing projects with backups)
-          const { CloudBackupManager } = await import('@/lib/cloud-backup');
-          const restored = await CloudBackupManager.getInstance().restoreFromCloud(projectId, container);
+          const { CloudBackupManager } = await import("@/lib/cloud-backup");
+          const restored =
+            await CloudBackupManager.getInstance().restoreFromCloud(
+              projectId,
+              container,
+            );
 
           if (restored) {
-            console.log('✅ Restored from cloud backup');
+            console.log("✅ Restored from cloud backup");
             await refreshFileTree(container);
             setIsLoading(false);
             setHydrating(false);
@@ -377,58 +393,58 @@ export function Workspace({
           // No backup found - mount template (normal for new projects)
           console.log(`📦 No backup found, mounting template...`);
 
-          if (platform === 'mobile') {
+          if (platform === "mobile") {
             // Populate Expo project files
             await container.mount({
-              'package.json': {
+              "package.json": {
                 file: {
                   contents: JSON.stringify(
                     {
-                      name: 'bolt-expo-template',
-                      main: 'expo-router/entry',
-                      version: '1.0.0',
+                      name: "bolt-expo-template",
+                      main: "expo-router/entry",
+                      version: "1.0.0",
                       private: true,
                       scripts: {
-                        dev: 'EXPO_NO_TELEMETRY=1 expo start',
-                        'build:web': 'expo export --platform web',
-                        lint: 'expo lint',
+                        dev: "EXPO_NO_TELEMETRY=1 expo start",
+                        "build:web": "expo export --platform web",
+                        lint: "expo lint",
                       },
                       dependencies: {
-                        '@expo/vector-icons': '^14.1.0',
-                        '@lucide/lab': '^0.1.2',
-                        '@react-navigation/bottom-tabs': '^7.2.0',
-                        '@react-navigation/native': '^7.0.14',
-                        expo: '^53.0.0',
-                        'expo-blur': '~14.1.3',
-                        'expo-camera': '~16.1.5',
-                        'expo-constants': '~17.1.3',
-                        'expo-font': '~13.2.2',
-                        'expo-haptics': '~14.1.3',
-                        'expo-linear-gradient': '~14.1.3',
-                        'expo-linking': '~7.1.3',
-                        'expo-router': '~5.0.2',
-                        'expo-splash-screen': '~0.30.6',
-                        'expo-status-bar': '~2.2.2',
-                        'expo-symbols': '~0.4.3',
-                        'expo-system-ui': '~5.0.5',
-                        'expo-web-browser': '~14.1.5',
-                        'lucide-react-native': '^0.475.0',
-                        react: '19.0.0',
-                        'react-dom': '19.0.0',
-                        'react-native': '0.79.1',
-                        'react-native-gesture-handler': '~2.24.0',
-                        'react-native-reanimated': '~3.17.4',
-                        'react-native-safe-area-context': '5.3.0',
-                        'react-native-screens': '~4.10.0',
-                        'react-native-svg': '15.11.2',
-                        'react-native-url-polyfill': '^2.0.0',
-                        'react-native-web': '^0.20.0',
-                        'react-native-webview': '13.13.5',
+                        "@expo/vector-icons": "^14.1.0",
+                        "@lucide/lab": "^0.1.2",
+                        "@react-navigation/bottom-tabs": "^7.2.0",
+                        "@react-navigation/native": "^7.0.14",
+                        expo: "^53.0.0",
+                        "expo-blur": "~14.1.3",
+                        "expo-camera": "~16.1.5",
+                        "expo-constants": "~17.1.3",
+                        "expo-font": "~13.2.2",
+                        "expo-haptics": "~14.1.3",
+                        "expo-linear-gradient": "~14.1.3",
+                        "expo-linking": "~7.1.3",
+                        "expo-router": "~5.0.2",
+                        "expo-splash-screen": "~0.30.6",
+                        "expo-status-bar": "~2.2.2",
+                        "expo-symbols": "~0.4.3",
+                        "expo-system-ui": "~5.0.5",
+                        "expo-web-browser": "~14.1.5",
+                        "lucide-react-native": "^0.475.0",
+                        react: "19.0.0",
+                        "react-dom": "19.0.0",
+                        "react-native": "0.79.1",
+                        "react-native-gesture-handler": "~2.24.0",
+                        "react-native-reanimated": "~3.17.4",
+                        "react-native-safe-area-context": "5.3.0",
+                        "react-native-screens": "~4.10.0",
+                        "react-native-svg": "15.11.2",
+                        "react-native-url-polyfill": "^2.0.0",
+                        "react-native-web": "^0.20.0",
+                        "react-native-webview": "13.13.5",
                       },
                       devDependencies: {
-                        '@babel/core': '^7.25.2',
-                        '@types/react': '~19.0.10',
-                        typescript: '~5.8.3',
+                        "@babel/core": "^7.25.2",
+                        "@types/react": "~19.0.10",
+                        typescript: "~5.8.3",
                       },
                     },
                     null,
@@ -436,26 +452,30 @@ export function Workspace({
                   ),
                 },
               },
-              'app.json': {
+              "app.json": {
                 file: {
                   contents: JSON.stringify(
                     {
                       expo: {
-                        name: 'bolt-diy-expo-nativewind',
-                        slug: 'bolt-diy-expo-nativewind',
-                        version: '1.0.0',
-                        orientation: 'portrait',
-                        icon: './assets/images/icon.png',
-                        scheme: 'myapp',
-                        userInterfaceStyle: 'automatic',
+                        name: "bolt-diy-expo-nativewind",
+                        slug: "bolt-diy-expo-nativewind",
+                        version: "1.0.0",
+                        orientation: "portrait",
+                        icon: "./assets/images/icon.png",
+                        scheme: "myapp",
+                        userInterfaceStyle: "automatic",
                         newArchEnabled: true,
                         ios: { supportsTablet: true },
                         web: {
-                          bundler: 'metro',
-                          output: 'single',
-                          favicon: './assets/images/favicon.png',
+                          bundler: "metro",
+                          output: "single",
+                          favicon: "./assets/images/favicon.png",
                         },
-                        plugins: ['expo-router', 'expo-font', 'expo-web-browser'],
+                        plugins: [
+                          "expo-router",
+                          "expo-font",
+                          "expo-web-browser",
+                        ],
                         experiments: { typedRoutes: true },
                       },
                     },
@@ -464,24 +484,24 @@ export function Workspace({
                   ),
                 },
               },
-              'expo-env.d.ts': {
+              "expo-env.d.ts": {
                 file: { contents: '/// <reference types="expo/types" />\n' },
               },
-              'tsconfig.json': {
+              "tsconfig.json": {
                 file: {
                   contents: JSON.stringify(
                     {
-                      extends: 'expo/tsconfig.base',
+                      extends: "expo/tsconfig.base",
                       compilerOptions: {
                         strict: true,
-                        paths: { '@/*': ['./*'] },
+                        paths: { "@/*": ["./*"] },
                       },
                       include: [
-                        '**/*.ts',
-                        '**/*.tsx',
-                        '.expo/types/**/*.ts',
-                        'expo-env.d.ts',
-                        'nativewind-env.d.ts',
+                        "**/*.ts",
+                        "**/*.tsx",
+                        ".expo/types/**/*.ts",
+                        "expo-env.d.ts",
+                        "nativewind-env.d.ts",
                       ],
                     },
                     null,
@@ -491,7 +511,7 @@ export function Workspace({
               },
               hooks: {
                 directory: {
-                  'useFrameworkReady.ts': {
+                  "useFrameworkReady.ts": {
                     file: {
                       contents: `import { useEffect } from 'react';
 
@@ -511,7 +531,7 @@ export function useFrameworkReady() {
               },
               app: {
                 directory: {
-                  'index.tsx': {
+                  "index.tsx": {
                     file: {
                       contents: `import { Redirect } from 'expo-router';
 
@@ -521,9 +541,9 @@ export default function Index() {
 `,
                     },
                   },
-                  '(tabs)': {
+                  "(tabs)": {
                     directory: {
-                      'index.tsx': {
+                      "index.tsx": {
                         file: {
                           contents: `import { View, Text, StyleSheet } from 'react-native';
 
@@ -542,7 +562,7 @@ const styles = StyleSheet.create({
 `,
                         },
                       },
-                      '_layout.tsx': {
+                      "_layout.tsx": {
                         file: {
                           contents: `import { Tabs } from 'expo-router';
 import { Home } from 'lucide-react-native';
@@ -562,7 +582,7 @@ export default function TabLayout() {
                       },
                     },
                   },
-                  '+not-found.tsx': {
+                  "+not-found.tsx": {
                     file: {
                       contents: `import { Link, Stack } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
@@ -589,7 +609,7 @@ const styles = StyleSheet.create({
 `,
                     },
                   },
-                  '_layout.tsx': {
+                  "_layout.tsx": {
                     file: {
                       contents: `import { useEffect } from 'react';
 import { Stack } from 'expo-router';
@@ -618,49 +638,49 @@ export default function RootLayout() {
           } else {
             // Initialize with Vite + React + TypeScript + Tailwind structure
             await container.mount({
-              'README.md': {
-                file: { contents: '# React + TypeScript + Vite' },
+              "README.md": {
+                file: { contents: "# React + TypeScript + Vite" },
               },
-              'package.json': {
+              "package.json": {
                 file: {
                   contents: JSON.stringify(
                     {
-                      name: projectId.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                      name: projectId.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
                       private: true,
-                      version: '0.0.0',
-                      type: 'module',
-                      packageManager: 'pnpm@9.0.0',
+                      version: "0.0.0",
+                      type: "module",
+                      packageManager: "pnpm@9.0.0",
                       engines: {
-                        node: '>=18.0.0',
-                        pnpm: '>=8.0.0',
+                        node: ">=18.0.0",
+                        pnpm: ">=8.0.0",
                       },
                       scripts: {
-                        dev: 'vite',
-                        build: 'tsc -b && vite build',
-                        lint: 'eslint .',
-                        preview: 'vite preview',
+                        dev: "vite",
+                        build: "tsc -b && vite build",
+                        lint: "eslint .",
+                        preview: "vite preview",
                       },
                       dependencies: {
-                        react: '^18.3.1',
-                        'react-dom': '^18.3.1',
-                        clsx: '^2.1.1',
-                        'tailwind-merge': '^2.5.4',
+                        react: "^18.3.1",
+                        "react-dom": "^18.3.1",
+                        clsx: "^2.1.1",
+                        "tailwind-merge": "^2.5.4",
                       },
                       devDependencies: {
-                        '@eslint/js': '^9.17.0',
-                        '@tailwindcss/vite': '^4.0.0-beta.6',
-                        '@types/node': '^22.10.2',
-                        '@types/react': '^18.3.17',
-                        '@types/react-dom': '^18.3.5',
-                        '@vitejs/plugin-react': '^4.3.4',
-                        eslint: '^9.17.0',
-                        'eslint-plugin-react-hooks': '^5.0.0',
-                        'eslint-plugin-react-refresh': '^0.4.16',
-                        globals: '^15.13.0',
-                        tailwindcss: '^4.0.0-beta.6',
-                        typescript: '~5.6.2',
-                        'typescript-eslint': '^8.18.2',
-                        vite: '^6.0.5',
+                        "@eslint/js": "^9.17.0",
+                        "@tailwindcss/vite": "^4.0.0-beta.6",
+                        "@types/node": "^22.10.2",
+                        "@types/react": "^18.3.17",
+                        "@types/react-dom": "^18.3.5",
+                        "@vitejs/plugin-react": "^4.3.4",
+                        eslint: "^9.17.0",
+                        "eslint-plugin-react-hooks": "^5.0.0",
+                        "eslint-plugin-react-refresh": "^0.4.16",
+                        globals: "^15.13.0",
+                        tailwindcss: "^4.0.0-beta.6",
+                        typescript: "~5.6.2",
+                        "typescript-eslint": "^8.18.2",
+                        vite: "^6.0.5",
                       },
                     },
                     null,
@@ -668,7 +688,7 @@ export default function RootLayout() {
                   ),
                 },
               },
-              'index.html': {
+              "index.html": {
                 file: {
                   contents: `<!doctype html>
 <html lang="en">
@@ -685,7 +705,7 @@ export default function RootLayout() {
 </html>`,
                 },
               },
-              'vite.config.ts': {
+              "vite.config.ts": {
                 file: {
                   contents: `import path from "path"
 import tailwindcss from "@tailwindcss/vite"
@@ -696,7 +716,7 @@ import createWebContainerVitePlugin from "./webcontainer-vite-plugin.js"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(), 
+    react(),
     tailwindcss(),
     createWebContainerVitePlugin()
   ],
@@ -741,31 +761,31 @@ export default defineConfig({
 })`,
                 },
               },
-              'tsconfig.json': {
+              "tsconfig.json": {
                 file: {
                   contents: JSON.stringify(
                     {
                       compilerOptions: {
-                        target: 'ESNext',
+                        target: "ESNext",
                         useDefineForClassFields: true,
-                        lib: ['ESNext', 'DOM'],
-                        module: 'ESNext',
+                        lib: ["ESNext", "DOM"],
+                        module: "ESNext",
                         skipLibCheck: true,
-                        moduleResolution: 'bundler',
+                        moduleResolution: "bundler",
                         allowImportingTsExtensions: true,
                         resolveJsonModule: true,
                         isolatedModules: true,
                         noEmit: true,
-                        jsx: 'react-jsx',
-                        baseUrl: '.',
+                        jsx: "react-jsx",
+                        baseUrl: ".",
                         paths: {
-                          '@/*': ['./src/*'],
+                          "@/*": ["./src/*"],
                         },
                       },
-                      include: ['src'],
+                      include: ["src"],
                       references: [
-                        { path: './tsconfig.app.json' },
-                        { path: './tsconfig.node.json' },
+                        { path: "./tsconfig.app.json" },
+                        { path: "./tsconfig.node.json" },
                       ],
                     },
                     null,
@@ -773,57 +793,57 @@ export default defineConfig({
                   ),
                 },
               },
-              'tsconfig.app.json': {
+              "tsconfig.app.json": {
                 file: {
                   contents: JSON.stringify(
                     {
                       compilerOptions: {
                         tsBuildInfoFile:
-                          './node_modules/.tmp/tsconfig.app.tsbuildinfo',
-                        target: 'ES2022',
+                          "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+                        target: "ES2022",
                         useDefineForClassFields: true,
-                        lib: ['ES2022', 'DOM', 'DOM.Iterable'],
-                        module: 'ESNext',
+                        lib: ["ES2022", "DOM", "DOM.Iterable"],
+                        module: "ESNext",
                         skipLibCheck: true,
-                        moduleResolution: 'bundler',
+                        moduleResolution: "bundler",
                         allowImportingTsExtensions: true,
                         verbatimModuleSyntax: true,
-                        moduleDetection: 'force',
+                        moduleDetection: "force",
                         noEmit: true,
-                        jsx: 'react-jsx',
+                        jsx: "react-jsx",
                         strict: true,
                         noUnusedLocals: true,
                         noUnusedParameters: true,
                         erasableSyntaxOnly: true,
                         noFallthroughCasesInSwitch: true,
                         noUncheckedSideEffectImports: true,
-                        baseUrl: '.',
+                        baseUrl: ".",
                         paths: {
-                          '@/*': ['./src/*'],
+                          "@/*": ["./src/*"],
                         },
                       },
-                      include: ['src'],
+                      include: ["src"],
                     },
                     null,
                     2,
                   ),
                 },
               },
-              'tsconfig.node.json': {
+              "tsconfig.node.json": {
                 file: {
                   contents: JSON.stringify(
                     {
                       compilerOptions: {
                         tsBuildInfoFile:
-                          './node_modules/.tmp/tsconfig.node.tsbuildinfo',
-                        target: 'ES2023',
-                        lib: ['ES2023'],
-                        module: 'ESNext',
+                          "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+                        target: "ES2023",
+                        lib: ["ES2023"],
+                        module: "ESNext",
                         skipLibCheck: true,
-                        moduleResolution: 'bundler',
+                        moduleResolution: "bundler",
                         allowImportingTsExtensions: true,
                         verbatimModuleSyntax: true,
-                        moduleDetection: 'force',
+                        moduleDetection: "force",
                         noEmit: true,
                         strict: true,
                         noUnusedLocals: true,
@@ -832,30 +852,30 @@ export default defineConfig({
                         noFallthroughCasesInSwitch: true,
                         noUncheckedSideEffectImports: true,
                       },
-                      include: ['vite.config.ts'],
+                      include: ["vite.config.ts"],
                     },
                     null,
                     2,
                   ),
                 },
               },
-              'components.json': {
+              "components.json": {
                 file: {
                   contents: JSON.stringify(
                     {
-                      $schema: 'https://ui.shadcn.com/schema.json',
-                      style: 'new-york',
+                      $schema: "https://ui.shadcn.com/schema.json",
+                      style: "new-york",
                       rsc: false,
                       tsx: true,
                       tailwind: {
-                        config: 'tailwind.config.js',
-                        css: 'src/index.css',
-                        baseColor: 'neutral',
+                        config: "tailwind.config.js",
+                        css: "src/index.css",
+                        baseColor: "neutral",
                         cssVariables: true,
                       },
                       aliases: {
-                        components: '@/components',
-                        utils: '@/lib/utils',
+                        components: "@/components",
+                        utils: "@/lib/utils",
                       },
                     },
                     null,
@@ -863,7 +883,7 @@ export default defineConfig({
                   ),
                 },
               },
-              'eslint.config.js': {
+              "eslint.config.js": {
                 file: {
                   contents: `import js from '@eslint/js'
 import globals from 'globals'
@@ -890,7 +910,7 @@ export default tseslint.config([
 ])`,
                 },
               },
-              '.gitignore': {
+              ".gitignore": {
                 file: {
                   contents: `# Logs
 logs
@@ -918,59 +938,59 @@ dist-ssr
 *.sw?`,
                 },
               },
-              'webcontainer-vite-plugin.js': {
+              "webcontainer-vite-plugin.js": {
                 file: {
                   contents: `// Advanced WebContainer Vite integration
 // This plugin provides better file watching for WebContainer environments
 
 export function createWebContainerVitePlugin() {
   let server;
-  
+
   return {
     name: 'webcontainer-integration',
-    
+
     configureServer(devServer) {
       server = devServer;
-      
+
       // Try to detect if we're in a WebContainer environment
-      const isWebContainer = typeof window !== 'undefined' && 
+      const isWebContainer = typeof window !== 'undefined' &&
         (window.webcontainer || window.__WEBCONTAINER__ || process.env.VITE_WEBCONTAINER);
-      
+
       if (!isWebContainer) {
         console.log('⚡ Standard Vite watcher (not in WebContainer)');
         return;
       }
-      
+
       console.log('🌐 WebContainer environment detected, optimizing watcher...');
-      
+
       // Override the default watcher behavior
       const originalWatcher = server.watcher;
       const watchedFiles = new Set();
       const pendingEvents = new Map();
-      
+
       // Create a more WebContainer-friendly watcher
       server.watcher = {
         ...originalWatcher,
-        
+
         // Debounced emit to prevent rapid-fire events
         emit(event, filePath, ...args) {
           const key = event + ':' + filePath;
-          
+
           // Clear any pending event for this file
           if (pendingEvents.has(key)) {
             clearTimeout(pendingEvents.get(key));
           }
-          
+
           // Debounce the event
           const timeout = setTimeout(() => {
             console.log('🔄 File', event + ':', filePath);
             originalWatcher.emit.call(this, event, filePath, ...args);
             pendingEvents.delete(key);
           }, 75);
-          
+
           pendingEvents.set(key, timeout);
         },
-        
+
         // Override close to clean up
         close() {
           pendingEvents.forEach(timeout => clearTimeout(timeout));
@@ -978,17 +998,17 @@ export function createWebContainerVitePlugin() {
           return originalWatcher.close.call(this);
         }
       };
-      
+
       console.log('🔧 WebContainer watcher optimizations applied');
     },
-    
+
     // Configure build optimizations for WebContainer
     config(config, { command }) {
       if (command === 'serve') {
         // Development server optimizations
         config.server = config.server || {};
         config.server.watch = config.server.watch || {};
-        
+
         // Use polling with optimized intervals
         Object.assign(config.server.watch, {
           usePolling: true,
@@ -1002,15 +1022,15 @@ export function createWebContainerVitePlugin() {
             '**/*.log'
           ]
         });
-        
+
         console.log('⚙️ WebContainer Vite config optimizations applied');
       }
     },
-    
+
     // Handle HMR updates with delay
     handleHotUpdate(ctx) {
       const { file } = ctx;
-      
+
       // Add small delay to ensure file operations complete
       return new Promise((resolve) => {
         setTimeout(() => {
@@ -1028,7 +1048,7 @@ export default createWebContainerVitePlugin;`,
               },
               src: {
                 directory: {
-                  'main.tsx': {
+                  "main.tsx": {
                     file: {
                       contents: `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -1067,7 +1087,7 @@ if (typeof window !== 'undefined') {
 }`,
                     },
                   },
-                  'App.tsx': {
+                  "App.tsx": {
                     file: {
                       contents: `function App() {
   return (
@@ -1083,19 +1103,19 @@ if (typeof window !== 'undefined') {
 export default App`,
                     },
                   },
-                  'index.css': {
+                  "index.css": {
                     file: {
                       contents: '@import "tailwindcss";',
                     },
                   },
-                  'vite-env.d.ts': {
+                  "vite-env.d.ts": {
                     file: {
                       contents: '/// <reference types="vite/client" />',
                     },
                   },
                   lib: {
                     directory: {
-                      'utils.ts': {
+                      "utils.ts": {
                         file: {
                           contents: `import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
@@ -1128,7 +1148,7 @@ export function cn(...inputs: ClassValue[]) {
         // Return cleanup function for preview subscription
         return unsubscribe;
       } catch (error) {
-        console.error('Failed to initialize WebContainer:', error);
+        console.error("Failed to initialize WebContainer:", error);
         setIsLoading(false);
         setHydrating(false);
         setTimeout(() => {
@@ -1145,14 +1165,14 @@ export function cn(...inputs: ClassValue[]) {
     });
 
     // Listen for file system changes
-    window.addEventListener('webcontainer-fs-change', handleFileSystemChange);
+    window.addEventListener("webcontainer-fs-change", handleFileSystemChange);
 
     return () => {
       // Reset initialization guard so component can re-initialize on remount
       initializingRef.current = false;
 
       window.removeEventListener(
-        'webcontainer-fs-change',
+        "webcontainer-fs-change",
         handleFileSystemChange,
       );
       if (cleanupPreview) {
@@ -1176,75 +1196,128 @@ export function cn(...inputs: ClassValue[]) {
         if (url) setExpUrl(url);
       } catch {}
     };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('preview-refresh', onRefresh as EventListener);
-      window.addEventListener('devserver-exp-url', onExpoUrl as EventListener);
+    if (typeof window !== "undefined") {
+      window.addEventListener("preview-refresh", onRefresh as EventListener);
+      window.addEventListener("devserver-exp-url", onExpoUrl as EventListener);
     }
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('preview-refresh', onRefresh as EventListener);
-        window.removeEventListener('devserver-exp-url', onExpoUrl as EventListener);
+      if (typeof window !== "undefined") {
+        window.removeEventListener(
+          "preview-refresh",
+          onRefresh as EventListener,
+        );
+        window.removeEventListener(
+          "devserver-exp-url",
+          onExpoUrl as EventListener,
+        );
       }
     };
   }, []);
 
   // Listen for HTML snapshot messages from iframe
   useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      console.log('🔔 Received message from origin:', event.origin, 'type:', event.data?.type);
+    // const handleMessage = async (event: MessageEvent) => {
+    //   console.log('🔔 Received message from origin:', event.origin, 'type:', event.data?.type);
 
-      // Security: Only accept messages from StackBlitz/WebContainer domains
-      if (!event.origin.includes('stackblitz') &&
-          !event.origin.includes('webcontainer')) {
-        console.log('⚠️ Ignoring message from untrusted origin:', event.origin);
+    //   // Security: Only accept messages from StackBlitz/WebContainer domains
+    //   if (!event.origin.includes('stackblitz') &&
+    //       !event.origin.includes('webcontainer')) {
+    //     console.log('⚠️ Ignoring message from untrusted origin:', event.origin);
+    //     return;
+    //   }
+
+    //   if (event.data?.type === 'HTML_SNAPSHOT' && event.data?.html) {
+    //     // Only capture once per dev server session
+    //     if (htmlCapturedRef.current) {
+    //       console.log('⏭️ Already captured HTML for this session, skipping');
+    //       return;
+    //     }
+
+    //     try {
+    //       console.log('📄 Received HTML snapshot from iframe!');
+    //       const html = event.data.html;
+    //       console.log(`📄 HTML size: ${html.length} bytes`);
+
+    //       // Upload to UploadThing
+    //       const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
+    //         method: 'POST',
+    //         headers: { 'Content-Type': 'application/json' },
+    //         body: JSON.stringify({ html }),
+    //       });
+
+    //       if (!response.ok) {
+    //         const error = await response.json();
+    //         console.error('Failed to save HTML snapshot:', error);
+    //         return;
+    //       }
+
+    //       const result = await response.json();
+    //       console.log('✅ HTML snapshot saved:', result.htmlSnapshotUrl);
+
+    //       // Show toast notification
+    //       toast({
+    //         title: 'Thumbnail saved',
+    //         description: 'Project snapshot captured successfully',
+    //       });
+
+    //       htmlCapturedRef.current = true;
+    //     } catch (error) {
+    //       console.error('Failed to save HTML snapshot:', error);
+    //     }
+    //   }
+    // };
+
+    // window.addEventListener('message', handleMessage);
+
+    // return () => {
+    //   window.removeEventListener('message', handleMessage);
+    // };
+    //
+
+    const TRUSTED_ORIGINS = ["stackblitz", "webcontainer"];
+
+    const handleMessage = async (event: MessageEvent) => {
+      // Fast reject: must be an object with our type
+      if (
+        !event.data ||
+        typeof event.data !== "object" ||
+        event.data.type !== "HTML_SNAPSHOT"
+      ) {
         return;
       }
 
-      if (event.data?.type === 'HTML_SNAPSHOT' && event.data?.html) {
-        // Only capture once per dev server session
-        if (htmlCapturedRef.current) {
-          console.log('⏭️ Already captured HTML for this session, skipping');
-          return;
-        }
-
-        try {
-          console.log('📄 Received HTML snapshot from iframe!');
-          const html = event.data.html;
-          console.log(`📄 HTML size: ${html.length} bytes`);
-
-          // Upload to UploadThing
-          const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ html }),
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            console.error('Failed to save HTML snapshot:', error);
-            return;
-          }
-
-          const result = await response.json();
-          console.log('✅ HTML snapshot saved:', result.htmlSnapshotUrl);
-
-          // Show toast notification
-          toast({
-            title: 'Thumbnail saved',
-            description: 'Project snapshot captured successfully',
-          });
-
-          htmlCapturedRef.current = true;
-        } catch (error) {
-          console.error('Failed to save HTML snapshot:', error);
-        }
+      // Origin check
+      if (!TRUSTED_ORIGINS.some((o) => event.origin.includes(o))) {
+        return;
       }
-    };
 
-    window.addEventListener('message', handleMessage);
+      console.log(
+        "📸 HTML snapshot received from:",
+        event.origin,
+        `(${event.data.html.length} bytes)`,
+      );
 
-    return () => {
-      window.removeEventListener('message', handleMessage);
+      if (htmlCapturedRef.current) return;
+
+      try {
+        const response = await fetch(
+          `/api/projects/${projectId}/html-snapshot`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ html: event.data.html }),
+          },
+        );
+
+        if (!response.ok) throw new Error("Upload failed");
+
+        const result = await response.json();
+        console.log("✅ HTML snapshot saved:", result.htmlSnapshotUrl);
+
+        htmlCapturedRef.current = true;
+      } catch (err) {
+        console.error("❌ Snapshot upload failed:", err);
+      }
     };
   }, [projectId, toast]);
 
@@ -1257,21 +1330,27 @@ export function cn(...inputs: ClassValue[]) {
 
   // Listen for cloud sync events
   useEffect(() => {
-    const handleSyncStart = () => setCloudSyncStatus({ syncing: true, lastSyncAt: null });
-    const handleSyncComplete = () => setCloudSyncStatus({ syncing: false, lastSyncAt: new Date() });
-    const handleSyncError = () => setCloudSyncStatus(prev => ({ syncing: false, lastSyncAt: prev.lastSyncAt }));
+    const handleSyncStart = () =>
+      setCloudSyncStatus({ syncing: true, lastSyncAt: null });
+    const handleSyncComplete = () =>
+      setCloudSyncStatus({ syncing: false, lastSyncAt: new Date() });
+    const handleSyncError = () =>
+      setCloudSyncStatus((prev) => ({
+        syncing: false,
+        lastSyncAt: prev.lastSyncAt,
+      }));
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('cloud-sync-start', handleSyncStart);
-      window.addEventListener('cloud-sync-complete', handleSyncComplete);
-      window.addEventListener('cloud-sync-error', handleSyncError);
+    if (typeof window !== "undefined") {
+      window.addEventListener("cloud-sync-start", handleSyncStart);
+      window.addEventListener("cloud-sync-complete", handleSyncComplete);
+      window.addEventListener("cloud-sync-error", handleSyncError);
     }
 
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('cloud-sync-start', handleSyncStart);
-        window.removeEventListener('cloud-sync-complete', handleSyncComplete);
-        window.removeEventListener('cloud-sync-error', handleSyncError);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("cloud-sync-start", handleSyncStart);
+        window.removeEventListener("cloud-sync-complete", handleSyncComplete);
+        window.removeEventListener("cloud-sync-error", handleSyncError);
       }
     };
   }, []);
@@ -1279,7 +1358,7 @@ export function cn(...inputs: ClassValue[]) {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
         event.preventDefault();
         if (selectedFile && hasUnsavedChanges) {
           handleSaveFile();
@@ -1287,8 +1366,8 @@ export function cn(...inputs: ClassValue[]) {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedFile, hasUnsavedChanges, handleSaveFile]);
 
   // Auto-save on page unload
@@ -1296,16 +1375,16 @@ export function cn(...inputs: ClassValue[]) {
     const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
         event.preventDefault();
-        event.returnValue = '';
+        event.returnValue = "";
         await handleSaveFile();
       }
-      
+
       // Save project state on exit
       await WebContainerManager.saveProjectState(projectId);
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges, projectId, handleSaveFile]);
 
   // Auto-save when switching files
@@ -1325,7 +1404,7 @@ export function cn(...inputs: ClassValue[]) {
     return (
       <div className="h-screen flex items-center justify-center bg-bg">
         {/* <div className="text-muted">Loading WebContainer...</div> */}
-          <div className="text-muted">There is no moat...</div>
+        <div className="text-muted">There is no moat...</div>
       </div>
     );
   }
@@ -1351,12 +1430,12 @@ export function cn(...inputs: ClassValue[]) {
             options={
               [
                 {
-                  value: 'preview',
+                  value: "preview",
                   text: `Preview${
-                    previews.length > 0 ? ` (${previews.length})` : ''
+                    previews.length > 0 ? ` (${previews.length})` : ""
                   }`,
                 },
-                { value: 'code', text: 'Code' },
+                { value: "code", text: "Code" },
               ] as TabOption<WorkspaceView>[]
             }
             selected={currentView}
@@ -1370,10 +1449,10 @@ export function cn(...inputs: ClassValue[]) {
             onClick={handlePlayStopClick}
             disabled={isInstalling || isStartingServer}
             className={cn(
-              'flex items-center gap-2 font-bold text-md',
+              "flex items-center gap-2 font-bold text-md",
               isDevServerRunning
-                ? 'text-red-400 hover:text-red-300 hover:bg-red-400/10'
-                : 'text-green-400 hover:text-green-300 hover:bg-green-400/10',
+                ? "text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                : "text-green-400 hover:text-green-300 hover:bg-green-400/10",
             )}
           >
             {isInstalling || isStartingServer ? (
@@ -1385,33 +1464,33 @@ export function cn(...inputs: ClassValue[]) {
             )}
             <span>
               {isInstalling
-                ? 'Installing...'
+                ? "Installing..."
                 : isStartingServer
-                  ? 'Starting...'
+                  ? "Starting..."
                   : isDevServerRunning
-                    ? 'Stop'
-                    : 'Start'}
+                    ? "Stop"
+                    : "Start"}
             </span>
           </Button>
 
           {/* File explorer toggle - on the right side of Tabs and after Start/Stop */}
-          {currentView === 'code' && (
+          {currentView === "code" && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowSidebar(!showSidebar)}
               className="text-muted hover:text-fg bolt-hover"
-              title={showSidebar ? 'Hide explorer' : 'Show explorer'}
+              title={showSidebar ? "Hide explorer" : "Show explorer"}
             >
               <PanelLeft size={16} />
             </Button>
           )}
 
-          {currentView === 'code' && selectedFile && (
+          {currentView === "code" && selectedFile && (
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted">/</span>
               <span className="text-fg font-medium bg-elevated/70 px-2 py-1 rounded flex items-center gap-2">
-                {selectedFile.split('/').pop()}
+                {selectedFile.split("/").pop()}
                 {hasUnsavedChanges && (
                   <span
                     className="w-2 h-2 rounded-full bg-orange-500"
@@ -1433,7 +1512,7 @@ export function cn(...inputs: ClassValue[]) {
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            {currentView === 'code' ? (
+            {currentView === "code" ? (
               <></>
             ) : (
               <>
@@ -1459,26 +1538,26 @@ export function cn(...inputs: ClassValue[]) {
                   <button
                     onClick={() =>
                       setPreviewDevice((prev) =>
-                        prev === 'desktop'
-                          ? 'tablet'
-                          : prev === 'tablet'
-                            ? 'mobile'
-                            : 'desktop',
+                        prev === "desktop"
+                          ? "tablet"
+                          : prev === "tablet"
+                            ? "mobile"
+                            : "desktop",
                       )
                     }
                     className="text-muted hover:text-fg"
                     title={`Device: ${previewDevice}`}
                   >
-                    {previewDevice === 'desktop' && <Monitor size={16} />}
-                    {previewDevice === 'tablet' && <Tablet size={16} />}
-                    {previewDevice === 'mobile' && <Smartphone size={16} />}
+                    {previewDevice === "desktop" && <Monitor size={16} />}
+                    {previewDevice === "tablet" && <Tablet size={16} />}
+                    {previewDevice === "mobile" && <Smartphone size={16} />}
                   </button>
                   <span className="text-muted text-sm select-none">/</span>
                   <input
                     type="text"
-                    value={previewPath.replace(/^\//, '')}
+                    value={previewPath.replace(/^\//, "")}
                     onChange={(e) =>
-                      setPreviewPath('/' + e.target.value.replace(/^\//, ''))
+                      setPreviewPath("/" + e.target.value.replace(/^\//, ""))
                     }
                     placeholder=""
                     className="flex-1 bg-transparent text-sm outline-none"
@@ -1487,7 +1566,7 @@ export function cn(...inputs: ClassValue[]) {
                     onClick={() => {
                       const p = previews[activePreviewIndex];
                       if (p)
-                        window.open(p.baseUrl + (previewPath || '/'), '_blank');
+                        window.open(p.baseUrl + (previewPath || "/"), "_blank");
                     }}
                     className="text-muted hover:text-fg"
                     title="Open in new tab"
@@ -1522,7 +1601,7 @@ export function cn(...inputs: ClassValue[]) {
 
             <UserButton
               afterSignOutUrl="/"
-              appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8' } }}
+              appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
             <SupabasePicker projectId={projectId} />
             <Button
@@ -1554,9 +1633,9 @@ export function cn(...inputs: ClassValue[]) {
           {/* Code View - Always mounted but conditionally visible */}
           <div
             className={cn(
-              'absolute inset-0',
-              currentView === 'code' ? 'flex flex-col' : 'hidden',
-              'rounded-xl border border-border overflow-hidden',
+              "absolute inset-0",
+              currentView === "code" ? "flex flex-col" : "hidden",
+              "rounded-xl border border-border overflow-hidden",
             )}
           >
             <div className="flex-1 min-h-0 flex">
@@ -1566,16 +1645,16 @@ export function cn(...inputs: ClassValue[]) {
                     <Tabs
                       options={
                         [
-                          { value: 'files', text: 'Files' },
-                          { value: 'search', text: 'Search' },
-                        ] as TabOption<'files' | 'search'>[]
+                          { value: "files", text: "Files" },
+                          { value: "search", text: "Search" },
+                        ] as TabOption<"files" | "search">[]
                       }
                       selected={sidebarTab}
-                      onSelect={(v) => setSidebarTab(v as 'files' | 'search')}
+                      onSelect={(v) => setSidebarTab(v as "files" | "search")}
                     />
                   </div>
                   <div className="flex-1 overflow-auto modern-scrollbar">
-                    {sidebarTab === 'files' ? (
+                    {sidebarTab === "files" ? (
                       <FileTree
                         files={files}
                         selectedFile={selectedFile}
@@ -1586,7 +1665,7 @@ export function cn(...inputs: ClassValue[]) {
                         files={files}
                         webcontainer={webcontainer}
                         onOpenFile={(path) => {
-                          setCurrentView('code');
+                          setCurrentView("code");
                           handleFileSelect(path);
                         }}
                       />
@@ -1599,7 +1678,7 @@ export function cn(...inputs: ClassValue[]) {
                   <CodeEditor
                     value={fileContent}
                     onChange={handleContentChange}
-                    language={getLanguageFromFilename(selectedFile || '')}
+                    language={getLanguageFromFilename(selectedFile || "")}
                     filename={selectedFile}
                   />
                 </div>
@@ -1614,8 +1693,8 @@ export function cn(...inputs: ClassValue[]) {
           {/* Preview View - Always mounted but conditionally visible */}
           <div
             className={cn(
-              'absolute inset-0 pb-2.5 pr-2.5',
-              currentView === 'preview' ? 'block' : 'hidden',
+              "absolute inset-0 pb-2.5 pr-2.5",
+              currentView === "preview" ? "block" : "hidden",
             )}
           >
             <Preview
@@ -1642,40 +1721,40 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 function getLanguageFromFilename(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase();
+  const ext = filename.split(".").pop()?.toLowerCase();
 
   const languageMap: Record<string, string> = {
-    js: 'javascript',
-    ts: 'typescript',
-    jsx: 'javascript',
-    tsx: 'typescript',
-    json: 'json',
-    md: 'markdown',
-    html: 'html',
-    css: 'css',
-    scss: 'scss',
-    py: 'python',
-    rb: 'ruby',
-    php: 'php',
-    java: 'java',
-    cpp: 'cpp',
-    c: 'c',
-    go: 'go',
-    rs: 'rust',
-    sh: 'shell',
-    yml: 'yaml',
-    yaml: 'yaml',
-    xml: 'xml',
-    sql: 'sql',
+    js: "javascript",
+    ts: "typescript",
+    jsx: "javascript",
+    tsx: "typescript",
+    json: "json",
+    md: "markdown",
+    html: "html",
+    css: "css",
+    scss: "scss",
+    py: "python",
+    rb: "ruby",
+    php: "php",
+    java: "java",
+    cpp: "cpp",
+    c: "c",
+    go: "go",
+    rs: "rust",
+    sh: "shell",
+    yml: "yaml",
+    yaml: "yaml",
+    xml: "xml",
+    sql: "sql",
   };
 
-  return languageMap[ext || ''] || 'plaintext';
+  return languageMap[ext || ""] || "plaintext";
 }
 
 function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
 
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
