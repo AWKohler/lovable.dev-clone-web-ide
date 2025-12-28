@@ -153,22 +153,15 @@ export async function GET(
               {project.name}
             </div>
 
-            {project.description && (
-              <div
-                style={{
-                  fontSize: 28,
-                  color: '#a1a1aa',
-                  lineHeight: 1.4,
-                  maxWidth: '80%',
-                  overflow: 'hidden',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                }}
-              >
-                {project.description}
-              </div>
-            )}
+            <div
+              style={{
+                fontSize: 28,
+                color: '#71717a',
+                lineHeight: 1.4,
+              }}
+            >
+              {platformLabel} Project
+            </div>
           </div>
 
           {/* Footer */}
