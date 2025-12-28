@@ -1046,17 +1046,21 @@ createRoot(document.getElementById('root')!).render(
 // It sends the rendered HTML to the parent window for snapshot capture
 if (typeof window !== 'undefined') {
   window.addEventListener('load', () => {
+    console.log('📸 Page loaded, will send HTML snapshot in 500ms...');
     setTimeout(() => {
       try {
+        const html = document.documentElement.outerHTML;
+        console.log('📸 Sending HTML snapshot to parent...', html.length, 'bytes');
         window.parent.postMessage(
           {
             type: 'HTML_SNAPSHOT',
-            html: document.documentElement.outerHTML,
+            html: html,
           },
           '*'
         );
+        console.log('✅ HTML snapshot sent!');
       } catch (e) {
-        console.warn('Could not send HTML snapshot:', e);
+        console.error('❌ Could not send HTML snapshot:', e);
       }
     }, 500); // Wait 500ms after load for rendering to complete
   });
@@ -1187,20 +1191,24 @@ export function cn(...inputs: ClassValue[]) {
   // Listen for HTML snapshot messages from iframe
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      // Security: Only accept messages from WebContainer domains
-      if (!event.origin.includes('webcontainer-api.io') &&
-          !event.origin.includes('local-credentialless.webcontainer')) {
+      console.log('🔔 Received message from origin:', event.origin, 'type:', event.data?.type);
+
+      // Security: Only accept messages from StackBlitz/WebContainer domains
+      if (!event.origin.includes('stackblitz') &&
+          !event.origin.includes('webcontainer')) {
+        console.log('⚠️ Ignoring message from untrusted origin:', event.origin);
         return;
       }
 
       if (event.data?.type === 'HTML_SNAPSHOT' && event.data?.html) {
         // Only capture once per dev server session
         if (htmlCapturedRef.current) {
+          console.log('⏭️ Already captured HTML for this session, skipping');
           return;
         }
 
         try {
-          console.log('📄 Received HTML snapshot from iframe...');
+          console.log('📄 Received HTML snapshot from iframe!');
           const html = event.data.html;
           console.log(`📄 HTML size: ${html.length} bytes`);
 
