@@ -5,7 +5,7 @@ import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { DevServerManager } from '@/lib/dev-server';
 import { getPreviewStore, PreviewInfo } from '@/lib/preview-store';
-import { captureProjectSnapshot, uploadProjectSnapshot } from '@/lib/snapshot-capture';
+import { useToast } from '@/components/ui/toast';
 import { FileTree } from './file-tree';
 import { FileSearch } from './file-search';
 import { AgentPanel } from '@/components/agent/AgentPanel';
@@ -82,6 +82,12 @@ export function Workspace({
 
   // Prevent concurrent initializations within same render
   const initializingRef = useRef(false);
+
+  // Toast for notifications
+  const { toast } = useToast();
+
+  // Track if we've already captured HTML for this dev server session
+  const htmlCapturedRef = useRef(false);
 
   // Fetch platform from API if not provided
   useEffect(() => {
@@ -304,52 +310,7 @@ export function Workspace({
     }
   }, [webcontainer, isDevServerRunning, startDevServer, stopDevServer]);
 
-  // Manual snapshot trigger for testing
-  const handleManualSnapshot = useCallback(async () => {
-    console.log('🔧 Manual snapshot triggered');
-    const activePreview = previews[activePreviewIndex];
-
-    if (!activePreview?.baseUrl) {
-      console.error('No active preview available');
-      alert('Start the dev server first!');
-      return;
-    }
-
-    console.log('📸 Capturing snapshot from URL:', activePreview.baseUrl);
-
-    try {
-      const snapshot = await captureProjectSnapshot(activePreview.baseUrl, {
-        width: 1280,
-        height: 720,
-      });
-
-      console.log('Snapshot captured:', {
-        hasHtml: !!snapshot.htmlContent,
-        htmlLength: snapshot.htmlContent?.length,
-        hasThumbnail: !!snapshot.thumbnailBlob,
-        thumbnailSize: snapshot.thumbnailBlob?.size,
-        error: snapshot.error,
-      });
-
-      if (snapshot.error) {
-        alert('Failed to capture: ' + snapshot.error);
-        return;
-      }
-
-      console.log('⬆️ Uploading...');
-      const result = await uploadProjectSnapshot(projectId, snapshot);
-
-      if (result.error) {
-        alert('Upload failed: ' + result.error);
-      } else {
-        alert('Snapshot saved! Check console for details.');
-        console.log('✅ Upload result:', result);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error: ' + String(error));
-    }
-  }, [projectId, previews, activePreviewIndex]);
+  // REMOVED: Manual snapshot test button (no longer needed)
 
   useEffect(() => {
     async function initWebContainer() {
@@ -1202,77 +1163,69 @@ export function cn(...inputs: ClassValue[]) {
     };
   }, []);
 
-  // Capture snapshot when agent finishes a turn
+  // Capture HTML from iframe when dev server starts
   useEffect(() => {
-    const handleAgentTurnFinished = async (e: Event) => {
-      console.log('🎯 Agent turn finished event received');
-      const detail = (e as CustomEvent).detail;
-      console.log('Event detail:', detail);
-      console.log('Current projectId:', projectId);
+    // Only capture once per dev server session
+    if (previews.length > 0 && !htmlCapturedRef.current && isDevServerRunning) {
+      // Wait a bit for the page to load in the iframe
+      const captureTimer = setTimeout(async () => {
+        try {
+          console.log('📄 Capturing HTML from iframe...');
 
-      if (detail?.projectId !== projectId) {
-        console.log('Skipping: different project');
-        return;
-      }
+          // Find the preview iframe
+          const iframe = document.querySelector('iframe[data-preview-iframe]') as HTMLIFrameElement;
 
-      // Only capture if there's an active preview (dev server running)
-      const activePreview = previews[activePreviewIndex];
-      console.log('Active preview:', activePreview);
+          if (!iframe || !iframe.contentDocument) {
+            console.warn('⚠️ Preview iframe not found or not accessible');
+            return;
+          }
 
-      if (!activePreview?.baseUrl) {
-        console.log('⚠️ Skipping snapshot: no active preview');
-        return;
-      }
+          // Get the outer HTML from the iframe
+          const html = iframe.contentDocument.documentElement.outerHTML;
 
-      console.log('📸 Starting snapshot capture from URL:', activePreview.baseUrl);
+          if (!html || html.length < 100) {
+            console.warn('⚠️ HTML content too short or empty');
+            return;
+          }
 
-      try {
-        // Wait a moment for any pending renders to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log(`📄 Captured ${html.length} bytes of HTML`);
 
-        console.log('Capturing screenshot via server...');
-        const snapshot = await captureProjectSnapshot(activePreview.baseUrl, {
-          width: 1280,
-          height: 720,
-        });
+          // Upload to UploadThing
+          const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html }),
+          });
 
-        console.log('Snapshot result:', {
-          hasHtml: !!snapshot.htmlContent,
-          htmlLength: snapshot.htmlContent?.length,
-          hasThumbnail: !!snapshot.thumbnailBlob,
-          thumbnailSize: snapshot.thumbnailBlob?.size,
-          error: snapshot.error,
-        });
+          if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to save HTML snapshot:', error);
+            return;
+          }
 
-        if (snapshot.error) {
-          console.error('❌ Snapshot capture error:', snapshot.error);
-          return;
+          const result = await response.json();
+          console.log('✅ HTML snapshot saved:', result.htmlSnapshotUrl);
+
+          // Show toast notification
+          toast({
+            title: 'Thumbnail saved',
+            description: 'Project snapshot captured successfully',
+          });
+
+          htmlCapturedRef.current = true;
+        } catch (error) {
+          console.error('Failed to capture HTML:', error);
         }
+      }, 3000); // Wait 3 seconds for page to load
 
-        console.log('⬆️ Uploading snapshot to server...');
-        const result = await uploadProjectSnapshot(projectId, snapshot);
-        if (result.error) {
-          console.error('❌ Snapshot upload error:', result.error);
-        } else {
-          console.log('✅ Snapshot saved successfully:', result);
-        }
-      } catch (error) {
-        console.error('❌ Failed to capture snapshot:', error);
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('agent-turn-finished', handleAgentTurnFinished);
-      console.log('✅ Registered agent-turn-finished listener for project:', projectId);
+      return () => clearTimeout(captureTimer);
     }
 
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('agent-turn-finished', handleAgentTurnFinished);
-        console.log('🗑️ Removed agent-turn-finished listener');
-      }
-    };
-  }, [projectId, previews, activePreviewIndex]);
+    // Reset capture flag when dev server stops
+    if (previews.length === 0) {
+      htmlCapturedRef.current = false;
+    }
+  }, [previews, isDevServerRunning, projectId, toast]);
 
   // Listen for cloud sync events
   useEffect(() => {
@@ -1411,18 +1364,6 @@ export function cn(...inputs: ClassValue[]) {
                     ? 'Stop'
                     : 'Start'}
             </span>
-          </Button>
-
-          {/* Test Snapshot Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleManualSnapshot}
-            disabled={!isDevServerRunning}
-            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
-            title="Test snapshot capture"
-          >
-            📸 Test
           </Button>
 
           {/* File explorer toggle - on the right side of Tabs and after Start/Stop */}

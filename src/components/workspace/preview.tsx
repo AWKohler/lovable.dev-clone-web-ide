@@ -487,7 +487,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
     <foreignObject x="18" y="18" width="390" height="844">
       <div class="size-full overflow-hidden rounded-[55.75px] object-contain" style="transform-origin: center center; background:#ffffff; padding-top:62px; padding-bottom:34px;">
         <div class="w-full h-full relative overflow-hidden">
-          <iframe src="${iframeUrl || ''}" class="border-0 w-full select-none h-full" allow="geolocation; camera; microphone" style="opacity: 1;"></iframe>
+          <iframe src="${iframeUrl || ''}" class="border-0 w-full select-none h-full" data-preview-iframe allow="geolocation; camera; microphone" style="opacity: 1;"></iframe>
           <div class="flex flex-col absolute inset-0 z-[3] pointer-events-none" style="transform-origin: center center;"></div>
         </div>
       </div>
@@ -521,6 +521,7 @@ export function Preview({ previews, activePreviewIndex, onActivePreviewChange, s
               src={iframeUrl || undefined}
               className="w-full h-full border-none"
               title="Preview"
+              data-preview-iframe
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
               allow="cross-origin-isolated"
             />
