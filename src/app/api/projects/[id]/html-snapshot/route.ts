@@ -33,48 +33,23 @@ export async function POST(
 
     // 3. Parse request body
     const body = await request.json();
-    const { url, html } = body;
+    const { html } = body;
 
-    let htmlContent: string;
-
-    // If URL is provided, fetch HTML from it
-    if (url && typeof url === 'string') {
-      try {
-        console.log(`📄 Fetching HTML from URL: ${url}`);
-        const htmlResponse = await fetch(url);
-
-        if (!htmlResponse.ok) {
-          return NextResponse.json(
-            { error: `Failed to fetch HTML: ${htmlResponse.statusText}` },
-            { status: 500 }
-          );
-        }
-
-        htmlContent = await htmlResponse.text();
-        console.log(`✅ Fetched ${htmlContent.length} bytes of HTML`);
-      } catch (error) {
-        console.error('Error fetching HTML:', error);
-        return NextResponse.json(
-          { error: 'Failed to fetch HTML from URL' },
-          { status: 500 }
-        );
-      }
-    } else if (html && typeof html === 'string') {
-      // Direct HTML content provided
-      htmlContent = html;
-    } else {
+    if (!html || typeof html !== 'string') {
       return NextResponse.json(
-        { error: 'Missing URL or HTML content' },
+        { error: 'Missing or invalid HTML content' },
         { status: 400 }
       );
     }
 
-    if (!htmlContent || htmlContent.length < 100) {
+    if (html.length < 100) {
       return NextResponse.json(
-        { error: 'HTML content too short or empty' },
+        { error: 'HTML content too short' },
         { status: 400 }
       );
     }
+
+    console.log(`📄 Received ${html.length} bytes of HTML for project ${projectId}`);
 
     // 4. Delete old HTML snapshot if it exists
     if (project.htmlSnapshotKey) {
@@ -88,7 +63,7 @@ export async function POST(
     }
 
     // 5. Upload new HTML to UploadThing as [projectId].html
-    const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+    const htmlBlob = new Blob([html], { type: 'text/html' });
     const htmlFile = new File([htmlBlob], `${projectId}.html`, { type: 'text/html' });
 
     const uploadResponse = await utapi.uploadFiles(htmlFile);

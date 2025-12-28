@@ -1039,7 +1039,28 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
-)`,
+)
+
+// HTML Snapshot Capture for Project Thumbnails
+// DO NOT REMOVE: This code enables automatic thumbnail generation
+// It sends the rendered HTML to the parent window for snapshot capture
+if (typeof window !== 'undefined') {
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      try {
+        window.parent.postMessage(
+          {
+            type: 'HTML_SNAPSHOT',
+            html: document.documentElement.outerHTML,
+          },
+          '*'
+        );
+      } catch (e) {
+        console.warn('Could not send HTML snapshot:', e);
+      }
+    }, 500); // Wait 500ms after load for rendering to complete
+  });
+}`,
                     },
                   },
                   'App.tsx': {
@@ -1163,29 +1184,31 @@ export function cn(...inputs: ClassValue[]) {
     };
   }, []);
 
-  // Capture HTML from preview URL when dev server starts
+  // Listen for HTML snapshot messages from iframe
   useEffect(() => {
-    // Only capture once per dev server session
-    if (previews.length > 0 && !htmlCapturedRef.current && isDevServerRunning) {
-      const activePreview = previews[activePreviewIndex];
-
-      if (!activePreview?.baseUrl) {
+    const handleMessage = async (event: MessageEvent) => {
+      // Security: Only accept messages from WebContainer domains
+      if (!event.origin.includes('webcontainer-api.io') &&
+          !event.origin.includes('local-credentialless.webcontainer')) {
         return;
       }
 
-      // Wait a bit for the page to load
-      const captureTimer = setTimeout(async () => {
+      if (event.data?.type === 'HTML_SNAPSHOT' && event.data?.html) {
+        // Only capture once per dev server session
+        if (htmlCapturedRef.current) {
+          return;
+        }
+
         try {
-          console.log('📄 Capturing HTML from preview URL...');
+          console.log('📄 Received HTML snapshot from iframe...');
+          const html = event.data.html;
+          console.log(`📄 HTML size: ${html.length} bytes`);
 
-          const previewUrl = activePreview.baseUrl;
-          console.log(`🔗 Preview URL: ${previewUrl}`);
-
-          // Fetch HTML through backend (to bypass CORS)
+          // Upload to UploadThing
           const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: previewUrl }),
+            body: JSON.stringify({ html }),
           });
 
           if (!response.ok) {
@@ -1205,18 +1228,24 @@ export function cn(...inputs: ClassValue[]) {
 
           htmlCapturedRef.current = true;
         } catch (error) {
-          console.error('Failed to capture HTML:', error);
+          console.error('Failed to save HTML snapshot:', error);
         }
-      }, 3000); // Wait 3 seconds for page to load
+      }
+    };
 
-      return () => clearTimeout(captureTimer);
-    }
+    window.addEventListener('message', handleMessage);
 
-    // Reset capture flag when dev server stops
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [projectId, toast]);
+
+  // Reset capture flag when dev server stops
+  useEffect(() => {
     if (previews.length === 0) {
       htmlCapturedRef.current = false;
     }
-  }, [previews, isDevServerRunning, projectId, toast, activePreviewIndex]);
+  }, [previews]);
 
   // Listen for cloud sync events
   useEffect(() => {
