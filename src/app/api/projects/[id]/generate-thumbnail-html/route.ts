@@ -99,7 +99,9 @@ export async function POST(
     }
 
     // 9. Upload to UploadThing
-    const imageBlob = new Blob([screenshot], { type: 'image/png' });
+    // Convert Uint8Array to Buffer for proper Blob compatibility
+    const buffer = Buffer.from(screenshot);
+    const imageBlob = new Blob([buffer], { type: 'image/png' });
     const imageFile = new File([imageBlob], `${projectId}-thumbnail.png`, { type: 'image/png' });
 
     const uploadResponse = await utapi.uploadFiles(imageFile);
