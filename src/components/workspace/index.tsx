@@ -1216,108 +1216,71 @@ export function cn(...inputs: ClassValue[]) {
 
   // Listen for HTML snapshot messages from iframe
   useEffect(() => {
-    // const handleMessage = async (event: MessageEvent) => {
-    //   console.log('🔔 Received message from origin:', event.origin, 'type:', event.data?.type);
-
-    //   // Security: Only accept messages from StackBlitz/WebContainer domains
-    //   if (!event.origin.includes('stackblitz') &&
-    //       !event.origin.includes('webcontainer')) {
-    //     console.log('⚠️ Ignoring message from untrusted origin:', event.origin);
-    //     return;
-    //   }
-
-    //   if (event.data?.type === 'HTML_SNAPSHOT' && event.data?.html) {
-    //     // Only capture once per dev server session
-    //     if (htmlCapturedRef.current) {
-    //       console.log('⏭️ Already captured HTML for this session, skipping');
-    //       return;
-    //     }
-
-    //     try {
-    //       console.log('📄 Received HTML snapshot from iframe!');
-    //       const html = event.data.html;
-    //       console.log(`📄 HTML size: ${html.length} bytes`);
-
-    //       // Upload to UploadThing
-    //       const response = await fetch(`/api/projects/${projectId}/html-snapshot`, {
-    //         method: 'POST',
-    //         headers: { 'Content-Type': 'application/json' },
-    //         body: JSON.stringify({ html }),
-    //       });
-
-    //       if (!response.ok) {
-    //         const error = await response.json();
-    //         console.error('Failed to save HTML snapshot:', error);
-    //         return;
-    //       }
-
-    //       const result = await response.json();
-    //       console.log('✅ HTML snapshot saved:', result.htmlSnapshotUrl);
-
-    //       // Show toast notification
-    //       toast({
-    //         title: 'Thumbnail saved',
-    //         description: 'Project snapshot captured successfully',
-    //       });
-
-    //       htmlCapturedRef.current = true;
-    //     } catch (error) {
-    //       console.error('Failed to save HTML snapshot:', error);
-    //     }
-    //   }
-    // };
-
-    // window.addEventListener('message', handleMessage);
-
-    // return () => {
-    //   window.removeEventListener('message', handleMessage);
-    // };
-    //
-
-    const TRUSTED_ORIGINS = ["stackblitz", "webcontainer"];
-
     const handleMessage = async (event: MessageEvent) => {
-      // Fast reject: must be an object with our type
-      if (
-        !event.data ||
-        typeof event.data !== "object" ||
-        event.data.type !== "HTML_SNAPSHOT"
-      ) {
-        return;
-      }
-
-      // Origin check
-      if (!TRUSTED_ORIGINS.some((o) => event.origin.includes(o))) {
-        return;
-      }
-
       console.log(
-        "📸 HTML snapshot received from:",
+        "🔔 Received message from origin:",
         event.origin,
-        `(${event.data.html.length} bytes)`,
+        "type:",
+        event.data?.type,
       );
 
-      if (htmlCapturedRef.current) return;
-
-      try {
-        const response = await fetch(
-          `/api/projects/${projectId}/html-snapshot`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ html: event.data.html }),
-          },
-        );
-
-        if (!response.ok) throw new Error("Upload failed");
-
-        const result = await response.json();
-        console.log("✅ HTML snapshot saved:", result.htmlSnapshotUrl);
-
-        htmlCapturedRef.current = true;
-      } catch (err) {
-        console.error("❌ Snapshot upload failed:", err);
+      // Security: Only accept messages from StackBlitz/WebContainer domains
+      if (
+        !event.origin.includes("stackblitz") &&
+        !event.origin.includes("webcontainer")
+      ) {
+        console.log("⚠️ Ignoring message from untrusted origin:", event.origin);
+        return;
       }
+
+      if (event.data?.type === "HTML_SNAPSHOT" && event.data?.html) {
+        // Only capture once per dev server session
+        if (htmlCapturedRef.current) {
+          console.log("⏭️ Already captured HTML for this session, skipping");
+          return;
+        }
+
+        try {
+          console.log("📄 Received HTML snapshot from iframe!");
+          const html = event.data.html;
+          console.log(`📄 HTML size: ${html.length} bytes`);
+
+          // Upload to UploadThing
+          const response = await fetch(
+            `/api/projects/${projectId}/html-snapshot`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ html }),
+            },
+          );
+
+          if (!response.ok) {
+            const error = await response.json();
+            console.error("Failed to save HTML snapshot:", error);
+            return;
+          }
+
+          const result = await response.json();
+          console.log("✅ HTML snapshot saved:", result.htmlSnapshotUrl);
+
+          // Show toast notification
+          toast({
+            title: "Thumbnail saved",
+            description: "Project snapshot captured successfully",
+          });
+
+          htmlCapturedRef.current = true;
+        } catch (error) {
+          console.error("Failed to save HTML snapshot:", error);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
     };
   }, [projectId, toast]);
 
