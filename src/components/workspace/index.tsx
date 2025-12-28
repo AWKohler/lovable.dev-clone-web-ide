@@ -1256,10 +1256,10 @@ export function cn(...inputs: ClassValue[]) {
           const result = await response.json();
           console.log("✅ HTML snapshot saved:", result.htmlSnapshotUrl);
 
-          // Generate thumbnail from OG image
-          console.log("🖼️  Generating thumbnail...");
+          // Generate thumbnail from HTML
+          console.log("🖼️  Generating thumbnail from HTML...");
           const thumbnailResponse = await fetch(
-            `/api/projects/${projectId}/generate-thumbnail`,
+            `/api/projects/${projectId}/generate-thumbnail-html`,
             {
               method: "POST",
             }
