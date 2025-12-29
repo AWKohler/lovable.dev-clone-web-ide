@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
-import { ToastProvider } from '@/components/ui/toast';
+import { ToastProvider } from "@/components/ui/toast";
+import { title } from "process";
+import { shadcn } from "@clerk/themes";
+import { enUS } from "@clerk/localizations";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,39 +33,107 @@ export default function RootLayout({
       signUpUrl="/sign-up"
       afterSignInUrl="/"
       afterSignUpUrl="/"
+      localization={{
+        ...enUS,
+        socialButtonsBlockButtonManyInView: "Continue with {{provider}}",
+        socialButtonsBlockButtonSingleProvider: "Continue with {{provider}}",
+      }}
       appearance={{
-
+        // variables: {
+        //   // colorText: "#ffffff",
+        //   // colorMuted: "#d1d5db",
+        //   // colorBackground: "#1d1a16",
+        //   // colorElevated: "#2b2722",
+        // },
         elements: {
-          
-              button: "!bg-[var(--color-elevated)] !text-[var(--color-text)] !fill-black",
+          // title: "!text-white",
 
-              cardBox: "!border-none !border-transparent !shadow-none !shadow-transparent",
+          // text: "!text-white",
 
-              card: "!border-none !border-transparent !shadow-none !shadow-transparent",
+          header: "!text-[var(--sand-text)]",
 
-              formButtonPrimary: "!bg-neutral-900 !text-white",
+          // button:
+          //   "!bg-[var(--color-elevated)] !text-[var(--sand-text)] !fill-black",
+          //
+          button: "!bg-[var(--color-elevated)]",
+          // !text-[var(--sand-text)]"
+          // button: "!bg-[var(--color-elevated)] !text-black",
 
-              // formField__username: "!bg-[var(--color-elevated)]",
+          // !border-[var(--sand-border)]
+          // !border-[var(--sand-accent-contrast-two)]
+          //
+          socialButtonsBlockButtonText: "!text-[var(--sand-text)]",
 
+          socialButtonsBlockButton: "!gap-0",
 
+          footerActionLink: "!text-[var(--sand-text)] !underline",
 
+          cardBox:
+            "!border-none !border-transparent !shadow-none !shadow-transparent",
 
-              
-            },
-        // theme: 'simple',
-        // baseTheme: shadcn,
-        // baseTheme: 'simple', 
+          card: "!border-none !border-transparent !shadow-none !shadow-transparent !mb-0 !pb-0",
+
+          formButtonPrimary: "!text-[var(--sand-bg)] !bg-[var(--sand-text)]",
+
+          formField__username: "!bg-[var(--color-elevated)] !font-bold",
+
+          userPreview: "!text-[var(--sand-text)]",
+
+          userPreviewMainIdentifierText: "!text-[var(--sand-text)]",
+
+          rootBox: "!text-[var(--sand-text)]",
+
+          navbar: "!text-[var(--sand-text)] !bg-surface",
+
+          footer: "!pt-0 !mt-0",
+
+          headerTitle: "!text-[var(--sand-text)]",
+
+          profileSection: "!border-[var(--sand-border)]",
+
+          profilePage: "!text-[var(--sand-text)]",
+
+          internal: "!text-[var(--sand-text)]",
+
+          title: "!text-[var(--sand-text)]",
+
+          text: "!text-[var(--sand-text)]",
+
+          badge: "!text-[var(--sand-text)]",
+
+          // userButtonPopoverCard: "!text-white",
+
+          // userButtonPopoverMain: "!text-white",
+
+          // text: "!text-white",
+
+          // userPreview: "!text-white",
+
+          // userButtonPopoverActionButton: "!text-white",
+
+          // button: "!text-white",
+
+          // userPreview__userButton: "!text-white",
+
+          // userButtonPopoverActionButton__manageAccount: "!text-white",
+
+          // button__manageAccount: "!text-white",
+        },
+
+        // theme: "shadcn",
+        baseTheme: shadcn,
+        // baseTheme: 'simple',
         variables: {
           // use the CSS variable that backs `bg-surface` so Clerk follows light/dark modes
-          colorBackground: 'var(--color-surface)',
+          colorBackground: "var(--color-surface)",
         },
       }}
     >
       <html lang="en">
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
+        <body
+          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        >
+          <ToastProvider>{children}</ToastProvider>
         </body>
       </html>
     </ClerkProvider>

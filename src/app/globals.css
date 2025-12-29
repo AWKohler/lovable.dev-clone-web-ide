@@ -1,143 +1,201 @@
 @import "tailwindcss";
-/* @import "@clerk/themes/shadcn.css"; */
+@import "@clerk/themes/shadcn.css";
+
+/*.cl-root {
+    --cl-text: var(--sand-text);
+    --cl-text-muted: var(--sand-text-muted);
+
+    --color-text: var(--cl-text);
+    --color-text-muted: var(--cl-text-muted);
+}*/
 
 :root {
-  /* Sand/Tan Design Tokens (Light) */
-  --sand-bg: #fefefe;
-  --sand-surface: #fcfbf8;
-  --sand-elevated: #f8f4ed;
-  --sand-soft: #e7dfd2;
-  --sand-border: #eceae4;
-  --sand-text: #2f2f31;
-  --sand-text-muted: #3f3f46;
-  --sand-accent: #1d52f1;
-  --sand-accent-contrast: #ffffff;
-  --sand-overlay: rgba(47, 42, 36, 0.05);
+    /* Sand/Tan Design Tokens (Light) */
+    --sand-bg: #fefefe;
+    --sand-surface: #fcfbf8;
+    --sand-elevated: #f8f4ed;
+    --sand-soft: #e7dfd2;
+    --sand-border: #eceae4;
+    --sand-text: #2f2f31;
+    --sand-text-muted: #3f3f46;
+    --sand-accent: #1d52f1;
+    --sand-accent-contrast: #ffffff;
+    --sand-accent-contrast-two: #1b1713;
+    --sand-overlay: rgba(47, 42, 36, 0.05);
 
-  /* App Layout Vars */
-  --background: var(--sand-bg);
-  --foreground: var(--sand-text);
-  --workbench-width: 75vw;
-  --workbench-left: 25vw;
-  --workbench-inner-width: calc(100vw - var(--workbench-left));
-  --header-height: 3rem;}
+    --gray-accent-one: #5f5f5f;
+    --gray-accent-two: #eceae4;
+
+    /* App Layout Vars */
+    --background: var(--sand-bg);
+    --foreground: var(--sand-text);
+    --workbench-width: 75vw;
+    --workbench-left: 25vw;
+    --workbench-inner-width: calc(100vw - var(--workbench-left));
+    --header-height: 3rem;
+}
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-bg: var(--sand-bg);
-  --color-fg: var(--sand-text);
-  --color-muted: var(--sand-text-muted);
-  --color-surface: var(--sand-surface);
-  --color-elevated: var(--sand-elevated);
-  --color-soft: var(--sand-soft);
-  --color-border: var(--sand-border);
-  --color-accent: var(--sand-accent);
-  --color-accent-foreground: var(--sand-accent-contrast);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-bg: var(--sand-bg);
+    --color-fg: var(--sand-text);
+    --color-muted: var(--sand-text-muted);
+    --color-surface: var(--sand-surface);
+    --color-elevated: var(--sand-elevated);
+    --color-soft: var(--sand-soft);
+    --color-border: var(--sand-border);
+    --color-accent: var(--sand-accent);
+    --color-accent-foreground: var(--sand-accent-contrast);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* Night Sand (Dark) */
-    --sand-bg: #1d1a16;
-    --sand-surface: #23201b;
-    --sand-elevated: #2b2722;
-    --sand-soft: #2a251f;
-    --sand-border: #3a342e;
-    --sand-text: #ede6db;
-    --sand-text-muted: #b8ada1;
-    --sand-accent: #d89b6a;
-    --sand-accent-contrast: #1b1713;
-    --sand-overlay: rgba(237, 230, 219, 0.07);
+    :root {
+        /* Night Sand (Dark) */
+        --sand-bg: #1d1a16;
+        --sand-surface: #23201b;
+        --sand-elevated: #2b2722;
+        --sand-soft: #2a251f;
+        --sand-border: #3a342e;
+        --sand-text: #ede6db;
+        --sand-text-muted: #b8ada1;
+        --sand-accent: #d89b6a;
+        --sand-accent-contrast: #1b1713;
+        /*--sand-accent-contrast-two: #ffffff;*/
+        --sand-overlay: rgba(237, 230, 219, 0.07);
 
-    --background: var(--sand-bg);
-    --foreground: var(--sand-text);
-  }
+        --gray-accent-one: #c5c1b9;
+        --gray-accent-two: #272624;
+
+        --background: var(--sand-bg);
+        --foreground: var(--sand-text);
+    }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    background: var(--background);
+    color: var(--foreground);
+    font-family:
+        var(--font-geist-sans),
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        Helvetica,
+        Arial,
+        "Apple Color Emoji",
+        "Segoe UI Emoji";
+}
+
+/* Force Google icon to pure black */
+.cl-providerIcon__google {
+    filter: grayscale(100%) contrast(200%) brightness(0);
+}
+
+/* Force Google icon to pure white in dark mode */
+@media (prefers-color-scheme: dark) {
+    .cl-providerIcon__google {
+        /*filter: grayscale(100%) contrast(200%) invert(1) brightness(1.1);*/
+        /*filter: grayscale(1) brightness(1.8) contrast(0.9);*/
+        filter: grayscale(1) brightness(2.2) contrast(0.85);
+    }
+}
+
+.cl-socialButtonsBlockButton > span {
+    gap: 0.5rem; /* Tailwind gap-2 */
 }
 
 /* Custom scrollbar styles */
 .modern-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--sand-text-muted) var(--sand-soft);
+    scrollbar-width: thin;
+    scrollbar-color: var(--sand-text-muted) var(--sand-soft);
 }
 
 .modern-scrollbar::-webkit-scrollbar {
-  width: 8px;
+    width: 8px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-track {
-  background: var(--sand-soft);
-  border-radius: 6px;
+    background: var(--sand-soft);
+    border-radius: 6px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--sand-text-muted) 80%, transparent);
-  border-radius: 6px;
+    background: color-mix(in oklab, var(--sand-text-muted) 80%, transparent);
+    border-radius: 6px;
 }
 
 .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklab, var(--sand-text-muted) 95%, transparent);
+    background: color-mix(in oklab, var(--sand-text-muted) 95%, transparent);
 }
 
 /* Dune-inspired scheme (keeps class names for minimal churn) */
 .bolt-bg {
-  background: radial-gradient(1000px 600px at 20% -10%, color-mix(in oklab, var(--sand-accent) 12%, transparent), transparent),
-              radial-gradient(900px 500px at 120% 10%, color-mix(in oklab, var(--sand-accent) 10%, transparent), transparent),
-              linear-gradient(135deg, var(--sand-bg) 0%, var(--sand-surface) 100%);
+    background:
+        radial-gradient(
+            1000px 600px at 20% -10%,
+            color-mix(in oklab, var(--sand-accent) 12%, transparent),
+            transparent
+        ),
+        radial-gradient(
+            900px 500px at 120% 10%,
+            color-mix(in oklab, var(--sand-accent) 10%, transparent),
+            transparent
+        ),
+        linear-gradient(135deg, var(--sand-bg) 0%, var(--sand-surface) 100%);
 }
 
 .bolt-border {
-  border-color: var(--sand-border);
+    border-color: var(--sand-border);
 }
 
 .bolt-hover {
-  transition: all 0.18s ease-in-out;
+    transition: all 0.18s ease-in-out;
 }
 
 .bolt-hover:hover {
-  background-color: color-mix(in oklab, var(--sand-elevated) 80%, var(--sand-overlay));
+    background-color: color-mix(
+        in oklab,
+        var(--sand-elevated) 80%,
+        var(--sand-overlay)
+    );
 }
 
 /* Animation classes */
 .bolt-fade-in {
-  animation: fadeIn 0.3s ease-in-out;
+    animation: fadeIn 0.3s ease-in-out;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Monaco editor adjustments */
 .monaco-editor {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace !important;
 }
 
 .monaco-editor .margin,
 .monaco-editor .monaco-editor-background {
-  background-color: var(--sand-elevated) !important;
+    background-color: var(--sand-elevated) !important;
 }
 
 /* Terminal styles */
 .xterm {
-  padding: 8px;
+    padding: 8px;
 }
 
 .xterm .xterm-viewport {
-  background-color: transparent !important;
+    background-color: transparent !important;
 }

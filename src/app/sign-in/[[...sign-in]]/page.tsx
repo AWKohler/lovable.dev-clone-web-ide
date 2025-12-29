@@ -1,7 +1,11 @@
 import Image from "next/image";
 import { SignIn } from "@clerk/nextjs";
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ redirect_url?: string }> }) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect_url?: string }>;
+}) {
   const resolvedParams = await searchParams;
   const redirectUrl = resolvedParams?.redirect_url ?? "/";
 
@@ -10,7 +14,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
       <div className="w-full md:w-1/2 flex items-center justify-center p-6 bg-surface text-neutral-900">
         {/* <div className="w-full max-w-md mx-auto scale-120 mt-20 ml-25"> */}
         <div className="w-full max-w-md mx-auto mt-20">
-
           <SignIn
             forceRedirectUrl={redirectUrl}
             routing="hash"
@@ -22,23 +25,55 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
                   gap: "0.75rem",
                   alignItems: "stretch",
                 },
-                socialButton: {
-                  // height: "h-6",
-                  width: "100%",
-                  borderRadius: "10px",
-                  backgroundColor: "var(--color-elevated)",
-                  color: "#222",
-                  fontWeight: "600",
-                  // padding: "0.75rem 1rem",
-                  boxShadow: "0 1px 2px 0 rgba(0,0,0,0.05)",
-                  border: "1px solid #e5e7eb",
-                },
-                
-                formFieldInputShowPasswordButton: "!bg-transparent",
+
+                // socialButtons: "!text-white"
+
+                // button: {
+                //   // border: "1px solid #fff",
+                //   // borderColor: "#fff",
+                //   // gap: "0",
+                // },
+
+                // socialButton: {
+                //   // height: "h-6",
+                //   width: "100%",
+                //   borderRadius: "10px",
+                //   // backgroundColor: "var(--color-elevated)",
+                //   backgroundColor: "var(--color-elevated)",
+
+                //   color: "#222",
+                //   fontWeight: "600",
+                //   // padding: "0.75rem 1rem",
+                //   boxShadow: "0 1px 2px 0 rgba(0,0,0,0.05)",
+                //   // border: "1px solid #e5e7eb",
+                //   // border: "1px solid var(--color-elevated)",
+                //   borderColor: "#fff",
+                // },
+
+                // footerActionLink: "!text-[var(--sand-text)] !underline",
+
+                // footerActionText: "!text-[var(--sand-text)] font-bold",
+
+                // formFieldLabel: "!text-[var(--sand-text)]",
+
+                // dividerRow: "",
+
+                dividerLine: "!bg-[var(--sand-border)]",
+
+                // dividerText: "!text-[var(--sand-text-muted)]",
+
+                // socialButtonsBlockButton: "!border-white !outline-white",
+
+                // formFieldInputShowPasswordButton: "!bg-transparent",
+
+                // formButtonPrimary:
+                //   "!bg-[var(--sand-text)] !text-[var(--sand-accent-contrast-two)]",
+
+                buttonArrowIcon: "!hidden",
               },
               variables: {
-                colorMuted: 'var(--color-surface)',
-                colorForeground: 'var(--color-text)'
+                colorMuted: "var(--color-surface)",
+                colorForeground: "var(--color-text)",
               },
             }}
           />
@@ -55,8 +90,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
             className="object-cover pointer-events-none select-none"
           />
 
-
-            
           {/* Centered overlay card on top of the image */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-auto">
             <div className="flex w-[450px] items-center gap-4 rounded-2xl bg-[#FCFBF8D9]/85 px-4 py-4 shadow-xl">
@@ -91,8 +124,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
               </div>
             </div>
           </div>
-
-
         </div>
       </div>
     </div>

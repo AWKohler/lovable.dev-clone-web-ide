@@ -1217,7 +1217,6 @@ export function cn(...inputs: ClassValue[]) {
   // Listen for HTML snapshot messages from iframe
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-
       // Security: Only accept messages from StackBlitz/WebContainer domains
       if (
         !event.origin.includes("stackblitz") &&
@@ -1262,12 +1261,15 @@ export function cn(...inputs: ClassValue[]) {
             `/api/projects/${projectId}/generate-thumbnail-html`,
             {
               method: "POST",
-            }
+            },
           );
 
           if (thumbnailResponse.ok) {
             const thumbnailResult = await thumbnailResponse.json();
-            console.log("✅ Thumbnail generated:", thumbnailResult.thumbnailUrl);
+            console.log(
+              "✅ Thumbnail generated:",
+              thumbnailResult.thumbnailUrl,
+            );
 
             // Show toast notification
             toast({
@@ -1578,6 +1580,13 @@ export function cn(...inputs: ClassValue[]) {
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
+              // appearance={{
+              //   variables: {
+              //     colorText: "#ffffff",
+              //     colorBackground: "#1d1a16",
+              //     colorPrimary: "#d89b6a",
+              //   },
+              // }}
             />
             <SupabasePicker projectId={projectId} />
             <Button
