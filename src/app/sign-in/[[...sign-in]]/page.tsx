@@ -37,12 +37,21 @@ export default async function Page({
 
       <div className="hidden md:flex md:w-1/2 items-center justify-center p-4 bg-surface">
         <div className="relative w-full h-full rounded-xl overflow-hidden">
+          {/* Light mode image */}
           <Image
             src="/light-login-background.webp"
             alt="Login Banner"
             fill
             priority
-            className="object-cover pointer-events-none select-none"
+            className="object-cover pointer-events-none select-none dark:hidden"
+          />
+          {/* Dark mode image */}
+          <Image
+            src="/dark-login-background.webp"
+            alt="Login Banner"
+            fill
+            priority
+            className="object-cover pointer-events-none select-none hidden dark:block"
           />
 
           {/* Centered overlay card on top of the image */}
