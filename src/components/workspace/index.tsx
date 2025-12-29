@@ -1580,13 +1580,6 @@ export function cn(...inputs: ClassValue[]) {
             <UserButton
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
-              // appearance={{
-              //   variables: {
-              //     colorText: "#ffffff",
-              //     colorBackground: "#1d1a16",
-              //     colorPrimary: "#d89b6a",
-              //   },
-              // }}
             />
             <SupabasePicker projectId={projectId} />
             <Button

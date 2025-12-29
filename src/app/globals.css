@@ -1,14 +1,6 @@
 @import "tailwindcss";
 @import "@clerk/themes/shadcn.css";
 
-/*.cl-root {
-    --cl-text: var(--sand-text);
-    --cl-text-muted: var(--sand-text-muted);
-
-    --color-text: var(--cl-text);
-    --color-text-muted: var(--cl-text-muted);
-}*/
-
 :root {
     /* Sand/Tan Design Tokens (Light) */
     --sand-bg: #fefefe;
@@ -99,8 +91,6 @@ body {
 /* Force Google icon to pure white in dark mode */
 @media (prefers-color-scheme: dark) {
     .cl-providerIcon__google {
-        /*filter: grayscale(100%) contrast(200%) invert(1) brightness(1.1);*/
-        /*filter: grayscale(1) brightness(1.8) contrast(0.9);*/
         filter: grayscale(1) brightness(2.2) contrast(0.85);
     }
 }

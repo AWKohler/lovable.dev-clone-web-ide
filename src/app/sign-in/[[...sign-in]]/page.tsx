@@ -25,51 +25,6 @@ export default async function Page({
                   gap: "0.75rem",
                   alignItems: "stretch",
                 },
-
-                // socialButtons: "!text-white"
-
-                // button: {
-                //   // border: "1px solid #fff",
-                //   // borderColor: "#fff",
-                //   // gap: "0",
-                // },
-
-                // socialButton: {
-                //   // height: "h-6",
-                //   width: "100%",
-                //   borderRadius: "10px",
-                //   // backgroundColor: "var(--color-elevated)",
-                //   backgroundColor: "var(--color-elevated)",
-
-                //   color: "#222",
-                //   fontWeight: "600",
-                //   // padding: "0.75rem 1rem",
-                //   boxShadow: "0 1px 2px 0 rgba(0,0,0,0.05)",
-                //   // border: "1px solid #e5e7eb",
-                //   // border: "1px solid var(--color-elevated)",
-                //   borderColor: "#fff",
-                // },
-
-                // footerActionLink: "!text-[var(--sand-text)] !underline",
-
-                // footerActionText: "!text-[var(--sand-text)] font-bold",
-
-                // formFieldLabel: "!text-[var(--sand-text)]",
-
-                // dividerRow: "",
-
-                dividerLine: "!bg-[var(--sand-border)]",
-
-                // dividerText: "!text-[var(--sand-text-muted)]",
-
-                // socialButtonsBlockButton: "!border-white !outline-white",
-
-                // formFieldInputShowPasswordButton: "!bg-transparent",
-
-                // formButtonPrimary:
-                //   "!bg-[var(--sand-text)] !text-[var(--sand-accent-contrast-two)]",
-
-                buttonArrowIcon: "!hidden",
               },
               variables: {
                 colorMuted: "var(--color-surface)",
