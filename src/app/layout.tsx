@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
-import { title } from "process";
 import { shadcn } from "@clerk/themes";
 import { enUS } from "@clerk/localizations";
 
@@ -36,7 +35,6 @@ export default function RootLayout({
       localization={{
         ...enUS,
         socialButtonsBlockButtonManyInView: "Continue with {{provider}}",
-        socialButtonsBlockButtonSingleProvider: "Continue with {{provider}}",
       }}
       appearance={{
         elements: {
