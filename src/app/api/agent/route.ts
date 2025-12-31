@@ -191,7 +191,7 @@ export async function POST(req: Request) {
     }
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: "gpt-4.1" | "claude-sonnet-4.5" = "gpt-4.1";
+    let selectedModel: "gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo" = "gpt-4.1";
     if (projectId) {
       const [proj] = await db
         .select()
@@ -203,8 +203,13 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      selectedModel =
-        proj.model === "claude-sonnet-4.5" ? "claude-sonnet-4.5" : "gpt-4.1";
+      if (proj.model === "claude-sonnet-4.5") {
+        selectedModel = "claude-sonnet-4.5";
+      } else if (proj.model === "kimi-k2-thinking-turbo") {
+        selectedModel = "kimi-k2-thinking-turbo";
+      } else {
+        selectedModel = "gpt-4.1";
+      }
     }
 
     // Load BYOK credentials
@@ -299,6 +304,27 @@ export async function POST(req: Request) {
       const openai = createOpenAI({ apiKey });
       const result = await streamText({
         model: openai("gpt-4.1"),
+        system:
+          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
+          supabaseNote,
+        messages: messages as CoreMessage[],
+        tools,
+      });
+      return result.toDataStreamResponse();
+    } else if (selectedModel === "kimi-k2-thinking-turbo") {
+      const apiKey = settings?.moonshotApiKey;
+      if (!apiKey) {
+        return new Response(
+          JSON.stringify({ error: "Missing Moonshot API key" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const moonshot = createOpenAI({
+        apiKey,
+        baseURL: "https://api.moonshot.ai/v1"
+      });
+      const result = await streamText({
+        model: moonshot("kimi-k2-thinking-turbo"),
         system:
           (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
           supabaseNote,

@@ -12,8 +12,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [moonshotKey, setMoonshotKey] = useState('');
   const [hasOpenai, setHasOpenai] = useState(false);
   const [hasAnthropic, setHasAnthropic] = useState(false);
+  const [hasMoonshot, setHasMoonshot] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +27,7 @@ export default function SettingsPage() {
           if (!cancelled) {
             setHasOpenai(Boolean(data?.hasOpenAIKey));
             setHasAnthropic(Boolean(data?.hasAnthropicKey));
+            setHasMoonshot(Boolean(data?.hasMoonshotKey));
           }
         }
       } catch (e) {
@@ -47,14 +50,17 @@ export default function SettingsPage() {
         body: JSON.stringify({
           openaiApiKey: openaiKey.trim() || null,
           anthropicApiKey: anthropicKey.trim() || null,
+          moonshotApiKey: moonshotKey.trim() || null,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setHasOpenai(Boolean(data?.hasOpenAIKey));
         setHasAnthropic(Boolean(data?.hasAnthropicKey));
+        setHasMoonshot(Boolean(data?.hasMoonshotKey));
         setOpenaiKey('');
         setAnthropicKey('');
+        setMoonshotKey('');
         toast({ title: 'Settings saved', description: 'Your API keys have been updated.' });
       } else {
         toast({ title: 'Save failed', description: 'Could not save settings.' });
@@ -125,6 +131,26 @@ export default function SettingsPage() {
                     placeholder={hasAnthropic ? '●●●●●●●● saved' : 'anthropic-...'}
                     value={anthropicKey}
                     onChange={(e) => setAnthropicKey(e.target.value)}
+                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
+                  />
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="inline-flex items-center rounded-lg bg-black px-3.5 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Moonshot API Key</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    placeholder={hasMoonshot ? '●●●●●●●● saved' : 'moonshot-...'}
+                    value={moonshotKey}
+                    onChange={(e) => setMoonshotKey(e.target.value)}
                     className="flex-1 rounded-lg border border-black/10 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-200"
                   />
                   <button

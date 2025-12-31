@@ -14,12 +14,13 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
   const [supabaseRef, setSupabaseRef] = useState<string | null>(null);
-  const [model, setModel] = useState<"gpt-4.1" | "claude-sonnet-4.5">(
+  const [model, setModel] = useState<"gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo">(
     "gpt-4.1",
   );
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
+  const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
@@ -32,13 +33,16 @@ export default function Home() {
     if (supabaseRef) params.set("supabaseRef", supabaseRef);
     const target = `/start?${params.toString()}`;
     if (authed) {
-      if (
-        (model === "gpt-4.1" && hasOpenAIKey === false) ||
-        (model === "claude-sonnet-4.5" && hasAnthropicKey === false)
-      ) {
+      const keyChecks = {
+        'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
+        'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+        'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
+      };
+      const check = keyChecks[model];
+      if (check.hasKey === false) {
         toast({
           title: "Missing API key",
-          description: `Please add your ${model === "gpt-4.1" ? "OpenAI" : "Anthropic"} API key in Settings.`,
+          description: `Please add your ${check.provider} API key in Settings.`,
         });
         return;
       }
@@ -57,6 +61,7 @@ export default function Home() {
           const data = await res.json();
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+          setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
         }
       } catch {}
     })();
@@ -229,13 +234,14 @@ export default function Home() {
                     value={model}
                     onChange={(e) =>
                       setModel(
-                        e.target.value as "gpt-4.1" | "claude-sonnet-4.5",
+                        e.target.value as "gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo",
                       )
                     }
                     title="Select model"
                   >
                     <option value="gpt-4.1">GPT-4.1</option>
                     <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                    <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
                   </select>
                 </div>
 

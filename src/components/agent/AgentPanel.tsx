@@ -39,9 +39,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [actions, setActions] = useState<ToolCallData[]>([]);
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<'gpt-4.1' | 'claude-sonnet-4.5'>('gpt-4.1');
+  const [model, setModel] = useState<'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo'>('gpt-4.1');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
+  const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const { toast } = useToast();
 
   const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
@@ -329,7 +330,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
         if (res.ok) {
           const proj = await res.json();
-          if (proj?.model === 'claude-sonnet-4.5' || proj?.model === 'gpt-4.1') {
+          if (proj?.model === 'claude-sonnet-4.5' || proj?.model === 'gpt-4.1' || proj?.model === 'kimi-k2-thinking-turbo') {
             setModel(proj.model);
           }
         }
@@ -340,6 +341,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           const data = await s.json();
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+          setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
         }
       } catch {}
     })();
@@ -431,9 +433,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-muted"
             value={model}
             onChange={async (e) => {
-              const next = e.target.value as 'gpt-4.1' | 'claude-sonnet-4.5';
-              if ((next === 'gpt-4.1' && hasOpenAIKey === false) || (next === 'claude-sonnet-4.5' && hasAnthropicKey === false)) {
-                toast({ title: 'Missing API key', description: `Please add your ${next === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
+              const next = e.target.value as 'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo';
+              const keyChecks = {
+                'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
+                'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+                'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
+              };
+              const check = keyChecks[next];
+              if (check.hasKey === false) {
+                toast({ title: 'Missing API key', description: `Please add your ${check.provider} API key in Settings.` });
                 e.target.value = model; // revert
                 return;
               }
@@ -453,6 +461,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           >
             <option value="gpt-4.1">GPT-4.1</option>
             <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+            <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
           </select>
           <Button
           type="button"

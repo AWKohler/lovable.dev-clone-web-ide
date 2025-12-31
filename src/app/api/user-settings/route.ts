@@ -16,6 +16,7 @@ export async function GET() {
     return NextResponse.json({
       hasOpenAIKey: Boolean(row?.openaiApiKey),
       hasAnthropicKey: Boolean(row?.anthropicApiKey),
+      hasMoonshotKey: Boolean(row?.moonshotApiKey),
     });
   } catch (e) {
     console.error('GET /api/user-settings failed:', e);
@@ -28,9 +29,10 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { openaiApiKey, anthropicApiKey } = body as {
+    const { openaiApiKey, anthropicApiKey, moonshotApiKey } = body as {
       openaiApiKey?: string | null;
       anthropicApiKey?: string | null;
+      moonshotApiKey?: string | null;
     };
 
     const db = getDb();
@@ -42,11 +44,12 @@ export async function POST(req: NextRequest) {
         .set({
           openaiApiKey: openaiApiKey === undefined ? existing.openaiApiKey : openaiApiKey || null,
           anthropicApiKey: anthropicApiKey === undefined ? existing.anthropicApiKey : anthropicApiKey || null,
+          moonshotApiKey: moonshotApiKey === undefined ? existing.moonshotApiKey : moonshotApiKey || null,
           updatedAt: new Date(),
         })
         .where(eq(userSettings.userId, userId))
         .returning();
-      return NextResponse.json({ ok: true, hasOpenAIKey: Boolean(updated.openaiApiKey), hasAnthropicKey: Boolean(updated.anthropicApiKey) });
+      return NextResponse.json({ ok: true, hasOpenAIKey: Boolean(updated.openaiApiKey), hasAnthropicKey: Boolean(updated.anthropicApiKey), hasMoonshotKey: Boolean(updated.moonshotApiKey) });
     } else {
       const [created] = await db
         .insert(userSettings)
@@ -54,9 +57,10 @@ export async function POST(req: NextRequest) {
           userId,
           openaiApiKey: openaiApiKey || null,
           anthropicApiKey: anthropicApiKey || null,
+          moonshotApiKey: moonshotApiKey || null,
         })
         .returning();
-      return NextResponse.json({ ok: true, hasOpenAIKey: Boolean(created.openaiApiKey), hasAnthropicKey: Boolean(created.anthropicApiKey) });
+      return NextResponse.json({ ok: true, hasOpenAIKey: Boolean(created.openaiApiKey), hasAnthropicKey: Boolean(created.anthropicApiKey), hasMoonshotKey: Boolean(created.moonshotApiKey) });
     }
   } catch (e) {
     console.error('POST /api/user-settings failed:', e);

@@ -9,7 +9,12 @@ export async function GET(request: Request) {
   const prompt = url.searchParams.get('prompt')?.slice(0, 4000) ?? '';
   const visibility = url.searchParams.get('visibility') ?? 'public';
   const platform = (url.searchParams.get('platform') === 'mobile' ? 'mobile' : 'web') as 'web' | 'mobile';
-  const model = (url.searchParams.get('model') === 'claude-sonnet-4.5' ? 'claude-sonnet-4.5' : 'gpt-4.1') as 'gpt-4.1' | 'claude-sonnet-4.5';
+  const modelParam = url.searchParams.get('model');
+  const model = (
+    modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-4.5' :
+    modelParam === 'kimi-k2-thinking-turbo' ? 'kimi-k2-thinking-turbo' :
+    'gpt-4.1'
+  ) as 'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo';
   const supabaseRef = url.searchParams.get('supabaseRef');
 
   if (!userId) {
