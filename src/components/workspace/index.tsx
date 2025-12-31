@@ -79,6 +79,7 @@ export function Workspace({
     syncing: boolean;
     lastSyncAt: Date | null;
   }>({ syncing: false, lastSyncAt: null });
+  const [htmlSnapshotUrl, setHtmlSnapshotUrl] = useState<string | null>(null);
 
   // Prevent concurrent initializations within same render
   const initializingRef = useRef(false);
@@ -89,24 +90,26 @@ export function Workspace({
   // Track if we've already captured HTML for this dev server session
   const htmlCapturedRef = useRef(false);
 
-  // Fetch platform from API if not provided
+  // Fetch platform and htmlSnapshotUrl from API
   useEffect(() => {
-    if (!initialPlatform) {
-      (async () => {
-        try {
-          const res = await fetch(
-            `/api/projects/${encodeURIComponent(projectId)}`,
-          );
-          if (res.ok) {
-            const proj = await res.json();
-            if (proj?.platform === "mobile" || proj?.platform === "web")
-              setPlatform(proj.platform);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}`,
+        );
+        if (res.ok) {
+          const proj = await res.json();
+          if (!initialPlatform && (proj?.platform === "mobile" || proj?.platform === "web")) {
+            setPlatform(proj.platform);
           }
-        } catch (e) {
-          console.warn("Failed to load project platform", e);
+          if (proj?.htmlSnapshotUrl) {
+            setHtmlSnapshotUrl(proj.htmlSnapshotUrl);
+          }
         }
-      })();
-    }
+      } catch (e) {
+        console.warn("Failed to load project data", e);
+      }
+    })();
   }, [initialPlatform, projectId]);
 
   // Helper function definitions - moved to top
@@ -1690,6 +1693,7 @@ export function cn(...inputs: ClassValue[]) {
               onToggleDevServer={handlePlayStopClick}
               platform={platform}
               expUrl={expUrl}
+              htmlSnapshotUrl={htmlSnapshotUrl}
             />
           </div>
         </div>
