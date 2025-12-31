@@ -72,8 +72,19 @@ export function Preview({
   const [fitMode, setFitMode] = useState<"height" | "width">("height");
   const [zoom, setZoom] = useState(1);
   const [showSnapshot, setShowSnapshot] = useState(true);
+  const [snapshotHtml, setSnapshotHtml] = useState<string | null>(null);
 
   const activePreview = previews[activePreviewIndex];
+
+  // Fetch HTML snapshot content
+  useEffect(() => {
+    if (htmlSnapshotUrl && !snapshotHtml) {
+      fetch(htmlSnapshotUrl)
+        .then(res => res.text())
+        .then(html => setSnapshotHtml(html))
+        .catch(err => console.error('Failed to fetch HTML snapshot:', err));
+    }
+  }, [htmlSnapshotUrl, snapshotHtml]);
 
   // Hide snapshot once dev server is running
   useEffect(() => {
@@ -180,7 +191,7 @@ export function Preview({
 
   if (!activePreview) {
     // Show HTML snapshot if available
-    if (htmlSnapshotUrl && showSnapshot) {
+    if (htmlSnapshotUrl && showSnapshot && snapshotHtml) {
       // Mobile platform - show snapshot in iPhone mockup
       if (platform === "mobile") {
         return (
@@ -308,7 +319,7 @@ export function Preview({
     <foreignObject x="18" y="18" width="390" height="844">
       <div class="size-full overflow-hidden rounded-[55.75px] object-contain relative" style="transform-origin: center center; background:#ffffff; padding-top:62px; padding-bottom:34px;">
         <div class="w-full h-full relative overflow-hidden">
-          <iframe src="${htmlSnapshotUrl || ""}" class="border-0 w-full select-none h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="opacity: 0.6;"></iframe>
+          <iframe srcdoc="${snapshotHtml?.replace(/"/g, '&quot;').replace(/\$/g, '$$$$') || ""}" class="border-0 w-full select-none h-full" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="opacity: 0.6;"></iframe>
           <div class="flex flex-col items-center justify-center absolute inset-0 z-[3] bg-black/40 backdrop-blur-[1px]" style="transform-origin: center center;">
             <button class="flex items-center justify-center w-20 h-20 rounded-full bg-white/90 hover:bg-white hover:scale-110 shadow-2xl transition-all duration-300" onclick="this.innerHTML='<span class=\\'inline-flex h-8 w-8 rounded-full border-4 border-green-600 border-t-transparent animate-spin\\'></span>'">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -375,7 +386,7 @@ export function Preview({
           {/* HTML Snapshot Content */}
           <div className="flex-1 relative">
             <iframe
-              src={htmlSnapshotUrl}
+              srcDoc={snapshotHtml || ''}
               className="w-full h-full border-none"
               title="Project Snapshot"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
