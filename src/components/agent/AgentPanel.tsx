@@ -39,7 +39,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   const [actions, setActions] = useState<ToolCallData[]>([]);
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo'>('gpt-4.1');
+  const [model, setModel] = useState<
+    'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo'
+  >('gpt-4.1');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
@@ -330,7 +332,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
         if (res.ok) {
           const proj = await res.json();
-          if (proj?.model === 'claude-sonnet-4.5' || proj?.model === 'gpt-4.1' || proj?.model === 'kimi-k2-thinking-turbo') {
+          if (
+            proj?.model === 'gpt-4.1' ||
+            proj?.model === 'claude-sonnet-4.5' ||
+            proj?.model === 'claude-haiku-4.5' ||
+            proj?.model === 'claude-opus-4.5' ||
+            proj?.model === 'kimi-k2-thinking-turbo'
+          ) {
             setModel(proj.model);
           }
         }
@@ -433,12 +441,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-muted"
             value={model}
             onChange={async (e) => {
-              const next = e.target.value as 'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo';
+              const next = e.target.value as
+                | 'gpt-4.1'
+                | 'claude-sonnet-4.5'
+                | 'claude-haiku-4.5'
+                | 'claude-opus-4.5'
+                | 'kimi-k2-thinking-turbo';
               const keyChecks = {
                 'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
                 'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+                'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+                'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
                 'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
-              };
+              } as const;
               const check = keyChecks[next];
               if (check.hasKey === false) {
                 toast({ title: 'Missing API key', description: `Please add your ${check.provider} API key in Settings.` });
@@ -461,6 +476,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           >
             <option value="gpt-4.1">GPT-4.1</option>
             <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+            <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+            <option value="claude-opus-4.5">Claude Opus 4.5</option>
             <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
           </select>
           <Button
@@ -552,7 +569,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       <form
         onSubmit={(e) => {
-          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (model === 'claude-sonnet-4.5' && hasAnthropicKey === false)) {
+          const usingAnthropic = model === 'claude-sonnet-4.5' || model === 'claude-haiku-4.5' || model === 'claude-opus-4.5';
+          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (usingAnthropic && hasAnthropicKey === false)) {
             e.preventDefault();
             toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
             return;

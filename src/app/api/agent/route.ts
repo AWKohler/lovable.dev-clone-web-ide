@@ -191,7 +191,12 @@ export async function POST(req: Request) {
     }
 
     // Determine selected model for project and ensure ownership
-    let selectedModel: "gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo" = "gpt-4.1";
+    let selectedModel:
+      | "gpt-4.1"
+      | "claude-sonnet-4.5"
+      | "claude-haiku-4.5"
+      | "claude-opus-4.5"
+      | "kimi-k2-thinking-turbo" = "gpt-4.1";
     if (projectId) {
       const [proj] = await db
         .select()
@@ -205,6 +210,10 @@ export async function POST(req: Request) {
       }
       if (proj.model === "claude-sonnet-4.5") {
         selectedModel = "claude-sonnet-4.5";
+      } else if (proj.model === "claude-haiku-4.5") {
+        selectedModel = "claude-haiku-4.5";
+      } else if (proj.model === "claude-opus-4.5") {
+        selectedModel = "claude-opus-4.5";
       } else if (proj.model === "kimi-k2-thinking-turbo") {
         selectedModel = "kimi-k2-thinking-turbo";
       } else {
@@ -321,7 +330,7 @@ export async function POST(req: Request) {
       }
       const moonshot = createOpenAI({
         apiKey,
-        baseURL: "https://api.moonshot.ai/v1"
+        baseURL: "https://api.moonshot.ai/v1",
       });
       const result = await streamText({
         model: moonshot("kimi-k2-thinking-turbo"),
@@ -341,8 +350,16 @@ export async function POST(req: Request) {
         );
       }
       const anthropic = createAnthropic({ apiKey });
+      // Map UI model to Anthropic model identifier
+      const anthropicModelId =
+        selectedModel === "claude-haiku-4.5"
+          ? "claude-haiku-4-5-20251001"
+          : selectedModel === "claude-opus-4.5"
+            ? "claude-opus-4-5-20251101"
+            : "claude-sonnet-4-5-20250929";
+
       const result = await streamText({
-        model: anthropic('claude-sonnet-4-20250514'),
+        model: anthropic(anthropicModelId),
         system:
           (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
           supabaseNote,

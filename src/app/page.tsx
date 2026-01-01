@@ -14,7 +14,13 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
   const [supabaseRef, setSupabaseRef] = useState<string | null>(null);
-  const [model, setModel] = useState<"gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo">(
+  const [model, setModel] = useState<
+    | "gpt-4.1"
+    | "claude-sonnet-4.5"
+    | "claude-haiku-4.5"
+    | "claude-opus-4.5"
+    | "kimi-k2-thinking-turbo"
+  >(
     "gpt-4.1",
   );
   const { toast } = useToast();
@@ -36,8 +42,10 @@ export default function Home() {
       const keyChecks = {
         'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
         'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+        'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+        'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
         'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
-      };
+      } as const;
       const check = keyChecks[model];
       if (check.hasKey === false) {
         toast({
@@ -234,13 +242,20 @@ export default function Home() {
                     value={model}
                     onChange={(e) =>
                       setModel(
-                        e.target.value as "gpt-4.1" | "claude-sonnet-4.5" | "kimi-k2-thinking-turbo",
+                        e.target.value as
+                          | "gpt-4.1"
+                          | "claude-sonnet-4.5"
+                          | "claude-haiku-4.5"
+                          | "claude-opus-4.5"
+                          | "kimi-k2-thinking-turbo",
                       )
                     }
                     title="Select model"
                   >
                     <option value="gpt-4.1">GPT-4.1</option>
                     <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                    <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                    <option value="claude-opus-4.5">Claude Opus 4.5</option>
                     <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
                   </select>
                 </div>

@@ -12,9 +12,11 @@ export async function GET(request: Request) {
   const modelParam = url.searchParams.get('model');
   const model = (
     modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-4.5' :
+    modelParam === 'claude-haiku-4.5' ? 'claude-haiku-4.5' :
+    modelParam === 'claude-opus-4.5' ? 'claude-opus-4.5' :
     modelParam === 'kimi-k2-thinking-turbo' ? 'kimi-k2-thinking-turbo' :
     'gpt-4.1'
-  ) as 'gpt-4.1' | 'claude-sonnet-4.5' | 'kimi-k2-thinking-turbo';
+  ) as 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo';
   const supabaseRef = url.searchParams.get('supabaseRef');
 
   if (!userId) {
