@@ -33,7 +33,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       thumbnailUrl?: string;
       htmlSnapshotUrl?: string;
     };
-    if (model && model !== 'gpt-4.1' && model !== 'claude-sonnet-4.5' && model !== 'kimi-k2-thinking-turbo') {
+    if (
+      model &&
+      model !== 'gpt-4.1' &&
+      model !== 'claude-sonnet-4.5' &&
+      model !== 'claude-haiku-4.5' &&
+      model !== 'claude-opus-4.5' &&
+      model !== 'kimi-k2-thinking-turbo'
+    ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
     }
     const updateData: Partial<typeof proj> = {

@@ -10,6 +10,11 @@ export class PreviewStore {
   private availablePreviews = new Map<number, PreviewInfo>();
   private webcontainer: WebContainer | null = null;
   private listeners: ((previews: PreviewInfo[]) => void)[] = [];
+  // Ensure we attach webcontainer event listeners only once
+  private listenersBound = false;
+
+  // Compile-time flag to control noisy debug logs in the browser
+  private static readonly DEBUG = process.env.NEXT_PUBLIC_DEBUG_PREVIEW === '1';
 
   setWebContainer(container: WebContainer) {
     this.webcontainer = container;
@@ -18,30 +23,42 @@ export class PreviewStore {
 
   private initializeListeners() {
     if (!this.webcontainer) return;
+    // Avoid attaching duplicate listeners across remounts/initializations
+    if (this.listenersBound) return;
 
     // Listen for server ready events
-    this.webcontainer.on('server-ready', (port, url) => {
-      console.log('[Preview] Server ready on port:', port, url);
+    this.webcontainer.on('server-ready', (port: number, url: string) => {
+      if (PreviewStore.DEBUG) {
+        console.log('[Preview] Server ready on port:', port, url);
+      }
       this.updatePreview(port, url, true);
     });
 
     // Listen for port events
-    this.webcontainer.on('port', (port, type, url) => {
-      console.log('[Preview] Port event:', { port, type, url });
-      
+    this.webcontainer.on('port', (port: number, type: 'open' | 'close', url?: string) => {
+      if (PreviewStore.DEBUG) {
+        console.log('[Preview] Port event:', { port, type, url });
+      }
+
       if (type === 'close') {
         this.removePreview(port);
         return;
       }
 
-      this.updatePreview(port, url, type === 'open');
+      this.updatePreview(port, url as string, type === 'open');
     });
+
+    this.listenersBound = true;
   }
 
   private updatePreview(port: number, url: string, ready: boolean) {
-    const previewInfo: PreviewInfo = { port, ready, baseUrl: url };
-    this.availablePreviews.set(port, previewInfo);
-    this.notifyListeners();
+    const prev = this.availablePreviews.get(port);
+    const next: PreviewInfo = { port, ready, baseUrl: url };
+    // Dedupe updates to avoid unnecessary re-renders
+    if (!prev || prev.ready !== next.ready || prev.baseUrl !== next.baseUrl) {
+      this.availablePreviews.set(port, next);
+      this.notifyListeners();
+    }
   }
 
   private removePreview(port: number) {

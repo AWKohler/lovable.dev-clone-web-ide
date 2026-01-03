@@ -138,6 +138,24 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             let after = before;
             try { after = await WebContainerAgent.readFile(path); } catch {}
             const stats = diffLineStats(before, after);
+
+            // Show user-friendly notification for diff errors
+            if (!res.ok) {
+              const failedCount = res.failed || 0;
+              const appliedCount = res.applied || 0;
+              if (failedCount > 0 && appliedCount === 0) {
+                toast({
+                  title: 'Diff application failed',
+                  description: `Could not match content in ${path}. The agent will retry with updated content.`,
+                });
+              } else if (failedCount > 0) {
+                toast({
+                  title: 'Partial diff applied',
+                  description: `Applied ${appliedCount}/${appliedCount + failedCount} changes to ${path}. Some blocks failed to match.`,
+                });
+              }
+            }
+
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,

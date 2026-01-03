@@ -1,9 +1,88 @@
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
-import { parseSearchReplaceBlocks, applyBlocksToContent } from './diff';
+import { applyDiff, type DiffResult, type FailedBlock } from './diff';
 import { DevServerManager } from '@/lib/dev-server';
 
 export type GrepResult = { filePath: string; lineNumber: number; lineContent: string };
+
+// ============================================================================
+// Diff Result Types for Agent Communication
+// ============================================================================
+
+export type ApplyDiffResult = {
+  ok: boolean;
+  applied: number;
+  failed: number;
+  message: string;
+  // Detailed error info for failed blocks
+  failedBlocks?: FailedBlock[];
+  // Hint for the agent on what to do next
+  suggestion?: string;
+};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Build a comprehensive error message from a DiffResult.
+ * This message is designed to help the LLM understand what went wrong
+ * and how to fix it.
+ */
+function buildDiffErrorMessage(diffResult: DiffResult, filePath: string): string {
+  const parts: string[] = [];
+
+  if (diffResult.error) {
+    parts.push(diffResult.error);
+  } else if (diffResult.failedBlocks.length > 0) {
+    parts.push(`Failed to apply ${diffResult.failedBlocks.length} diff block(s) to ${filePath}.`);
+
+    for (const failed of diffResult.failedBlocks) {
+      parts.push(`\n[Block ${failed.index + 1}] ${failed.reason}`);
+
+      if (failed.bestMatch) {
+        parts.push(`  Best match found at line ${failed.bestMatch.lineNumber} (${Math.floor(failed.bestMatch.similarity * 100)}% similar):`);
+        parts.push(`  File content: "${failed.bestMatch.content.slice(0, 80).replace(/\n/g, '\\n')}..."`);
+      }
+
+      parts.push(`  Searched for: "${failed.searchPreview.slice(0, 80).replace(/\n/g, '\\n')}..."`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Build a suggestion for the agent based on the diff result.
+ */
+function buildDiffSuggestion(diffResult: DiffResult): string {
+  if (diffResult.success && diffResult.failedBlocks.length === 0) {
+    return '';
+  }
+
+  const suggestions: string[] = [];
+
+  // Check if there were partial matches
+  const hasPartialMatches = diffResult.failedBlocks.some(
+    fb => fb.bestMatch && fb.bestMatch.similarity > 0.5
+  );
+
+  if (hasPartialMatches) {
+    suggestions.push('The file content has changed since you last read it. Use readFile to get the current content.');
+  } else {
+    suggestions.push('No similar content was found. Double-check the file path and use readFile to verify the file content.');
+  }
+
+  if (diffResult.failedBlocks.some(fb => fb.searchPreview.includes('  '))) {
+    suggestions.push('Watch for indentation differences - tabs vs spaces or extra/missing spaces.');
+  }
+
+  return suggestions.join(' ');
+}
+
+// ============================================================================
+// WebContainer Agent
+// ============================================================================
 
 export const WebContainerAgent = {
   async getContainer(): Promise<WebContainer> {
@@ -63,9 +142,8 @@ export const WebContainerAgent = {
       try {
         await container.fs.readdir(path);
         return { ok: false, message: 'A directory with this name already exists', path };
-      } catch (err) {
-        const msg = String(err ?? '');
-        // If error is not ENOENT or ENOTDIR, proceed to file check
+      } catch {
+        // Expected - directory doesn't exist
       }
       // Check if a file exists at this path
       try {
@@ -85,7 +163,9 @@ export const WebContainerAgent = {
       if (dir && dir !== '/') {
         try {
           await container.fs.mkdir(dir, { recursive: true });
-        } catch {}
+        } catch {
+          // Ignore mkdir errors
+        }
       }
 
       // Create an empty file
@@ -98,55 +178,91 @@ export const WebContainerAgent = {
     }
   },
 
-  async applyDiff(filePath: string, diff: string): Promise<{ applied: number; failures: number } & (
-    | { ok: true; message: string }
-    | { ok: false; message: string }
-  )> {
+  async applyDiff(filePath: string, diff: string): Promise<ApplyDiffResult> {
     const container = await this.getContainer();
+
     // Read existing content; if file doesn't exist, treat as empty so we can create it
     let original = '';
+    let isNewFile = false;
+
     try {
       original = await container.fs.readFile(filePath, 'utf8');
     } catch (err) {
       const message = String(err ?? '');
       if (!/ENOENT/.test(message)) {
-        throw err;
+        return {
+          ok: false,
+          applied: 0,
+          failed: 0,
+          message: `Error reading file: ${message}`,
+        };
       }
-      // ENOENT -> new file creation path; proceed with empty original
+      // ENOENT -> new file creation path
+      isNewFile = true;
       original = '';
     }
-    const blocks = parseSearchReplaceBlocks(diff);
-    if (blocks.length === 0) {
-      return { ok: false, applied: 0, failures: 0, message: 'No SEARCH/REPLACE blocks found in diff.' };
-    }
-    const result = applyBlocksToContent(original, blocks);
-    if (result.applied === 0) {
-      // return preview of first failure to help LLM self-correct
-      const preview = result.failures[0]?.preview ?? 'No preview';
+
+    // Apply the diff with fuzzy matching
+    const result = applyDiff(original, diff);
+
+    // Build response based on result
+    if (!result.success || result.appliedCount === 0) {
+      const errorMessage = buildDiffErrorMessage(result, filePath);
+      const suggestion = buildDiffSuggestion(result);
+
       return {
         ok: false,
-        applied: 0,
-        failures: blocks.length,
-        message: `No blocks applied. Ensure SEARCH matches exact current file. Preview near likely location:\n${preview}`,
+        applied: result.appliedCount,
+        failed: result.failedBlocks.length,
+        message: errorMessage,
+        failedBlocks: result.failedBlocks,
+        suggestion,
       };
     }
-    // Ensure parent directory exists for new files
-    const lastSlash = filePath.lastIndexOf('/');
-    const dir = lastSlash > 0 ? filePath.slice(0, lastSlash) || '/' : '/';
-    try {
-      if (dir && dir !== '/') {
-        await container.fs.mkdir(dir, { recursive: true });
-      }
-    } catch {}
 
-    await container.fs.writeFile(filePath, result.content);
+    // We have at least some successful applications
+    // Ensure parent directory exists for new files
+    if (isNewFile) {
+      const lastSlash = filePath.lastIndexOf('/');
+      const dir = lastSlash > 0 ? filePath.slice(0, lastSlash) || '/' : '/';
+      try {
+        if (dir && dir !== '/') {
+          await container.fs.mkdir(dir, { recursive: true });
+        }
+      } catch {
+        // Ignore mkdir errors
+      }
+    }
+
+    // Write the file
+    await container.fs.writeFile(filePath, result.content!);
     await WebContainerManager.saveProjectState('default');
-    return {
+
+    // Build success message
+    const totalBlocks = result.appliedCount + result.failedBlocks.length;
+    let message: string;
+
+    if (result.failedBlocks.length === 0) {
+      message = `Successfully applied ${result.appliedCount} change(s) to ${filePath}.`;
+    } else {
+      message = `Applied ${result.appliedCount}/${totalBlocks} changes to ${filePath}. ` +
+        `${result.failedBlocks.length} block(s) failed - use readFile to check current content.`;
+    }
+
+    const response: ApplyDiffResult = {
       ok: true,
-      applied: result.applied,
-      failures: result.failures.length,
-      message: `Applied ${result.applied} change(s), ${result.failures.length} failed.`,
+      applied: result.appliedCount,
+      failed: result.failedBlocks.length,
+      message,
     };
+
+    // Include failure details if there were partial failures
+    if (result.failedBlocks.length > 0) {
+      response.failedBlocks = result.failedBlocks;
+      response.suggestion = buildDiffSuggestion(result);
+    }
+
+    return response;
   },
 
   async *searchFiles(startPath: string, query: string): AsyncGenerator<GrepResult> {
