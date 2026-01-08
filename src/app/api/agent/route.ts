@@ -35,10 +35,11 @@ export async function POST(req: Request) {
       "---",
       "",
       "## Core Identity & Responsibilities",
-      "- You **always edit files via `applyDiff`** using `SEARCH/REPLACE` blocks.",
-      "  - Diff editing can do both **selective edits** and **full rewrites**.",
-      "  - Never manually rewrite entire files unless necessary — use focused diffs.",
+      "- **Creating new files**: Use `writeFile` to create new files with content.",
+      "- **Editing existing files**: Use `applyDiff` with `SEARCH/REPLACE` blocks for partial edits.",
+      "- **Overwriting files**: Use `writeFile` when you need to completely replace a file's content.",
       "- You **must read files explicitly** when needed (`readFile`, `searchFiles`). You do not have preloaded context.",
+      "- **Important**: `applyDiff` does NOT work on empty or non-existent files. Always use `writeFile` to create new files.",
       "- After completing a task:",
       "  1. Ensure dev server is **running** (start if needed).",
       "  2. Always **check the dev server log for errors**.",
@@ -56,9 +57,10 @@ export async function POST(req: Request) {
       "   - Define exactly what needs to change, nothing more.",
       "   - Avoid scope creep or overengineering.",
       "",
-      "3. **Implement via `applyDiff`**:",
-      "   - Use **SEARCH/REPLACE diff blocks** with enough context for unique matching.",
-      "   - The system uses **fuzzy matching** (85% similarity threshold) so minor whitespace differences are tolerated.",
+      "3. **Implement changes**:",
+      "   - **New files**: Use `writeFile` with the complete file content.",
+      "   - **Existing files**: Use `applyDiff` with **SEARCH/REPLACE blocks** for selective edits.",
+      "   - The diff system uses **fuzzy matching** (85% similarity threshold) so minor whitespace differences are tolerated.",
       "   - Include 2-3 lines of unique surrounding context to ensure the correct location is found.",
       "",
       "4. **Verify & conclude**:",
@@ -164,15 +166,30 @@ export async function POST(req: Request) {
       "- For imports, target the specific import line rather than the entire import block",
       "- Multiple small diffs in one call are more reliable than one large diff",
       "",
+      "## File Tool Selection Guide",
+      "",
+      "| Scenario | Tool to Use |",
+      "|----------|-------------|",
+      "| Create a new file | `writeFile` |",
+      "| Edit part of an existing file | `applyDiff` |",
+      "| Completely rewrite a file | `writeFile` |",
+      "| Add content to an empty file | `writeFile` |",
+      "",
+      "**Remember**: `applyDiff` will fail on empty or non-existent files. Always use `writeFile` for new file creation.",
+      "",
       "## Notes",
-      "- For multi-file actions, list+read in parallel, then write diffs in parallel.",
+      "- For multi-file actions, list+read in parallel, then write changes in parallel.",
     ].join("\n");
 
     const systemPromptMobile = [
       "You are an expert React Native (Expo) coding agent working in a WebContainer.",
       "This project uses Expo Router. Use npm, NOT pnpm.",
       "To start the dev server, we run: npm exec expo start --tunnel",
-      "ONLY modify files via tools. Use diff-based edits, never full-file rewrites.",
+      "",
+      "## File Modification Tools",
+      "- **Creating new files**: Use `writeFile` to create new files with content.",
+      "- **Editing existing files**: Use `applyDiff` with SEARCH/REPLACE blocks.",
+      "- **Important**: `applyDiff` does NOT work on empty or non-existent files. Always use `writeFile` to create new files.",
       "",
       "## Diff System",
       "The diff system uses **fuzzy matching** (85% similarity threshold):",
@@ -180,7 +197,7 @@ export async function POST(req: Request) {
       "- Smart quotes and unicode characters are normalized",
       "- Small typos in your SEARCH content won't break the match",
       "",
-      "For edits, return SEARCH/REPLACE blocks in the diff string. Each block must be:",
+      "For edits to existing files, use SEARCH/REPLACE blocks:",
       "<<<<<<< SEARCH",
       "... contiguous snippet from the current file (fuzzy matched) ...",
       "=======",
@@ -188,12 +205,13 @@ export async function POST(req: Request) {
       ">>>>>>> REPLACE",
       "",
       "You may include multiple consecutive SEARCH/REPLACE blocks for a single file.",
-      "When acting across many files, plan to list+read in parallel, then write diffs in parallel.",
+      "When acting across many files, plan to list+read in parallel, then write changes in parallel.",
       "Never use pnpm. Use npm i / npm exec expo start. Configure expo-router screens under app/.",
       "",
       "## Error Handling",
       "If a diff fails, the error will show the best match found and its similarity score.",
       "Use `readFile` to get current content before retrying.",
+      "If applyDiff fails because the file is empty or doesn't exist, use `writeFile` instead.",
     ].join("\n");
 
     // If this request is tied to a project, detect linked Supabase
@@ -269,12 +287,18 @@ export async function POST(req: Request) {
           recursive: z.boolean().optional().default(false),
         }),
       }),
-      createFile: tool({
-        description: "Create a new empty file. Fails if it exists.",
+      writeFile: tool({
+        description:
+          "Write content to a file. Creates the file if it doesn't exist, or overwrites it if it does. " +
+          "Use this tool to create new files with content, or to completely replace file contents. " +
+          "For partial edits to existing files, prefer applyDiff instead.",
         parameters: z.object({
           path: z
             .string()
-            .describe("File path to create, e.g. '/src/new-file.ts'"),
+            .describe("File path to write, e.g. '/src/new-file.ts'"),
+          content: z
+            .string()
+            .describe("The content to write to the file"),
         }),
       }),
       readFile: tool({

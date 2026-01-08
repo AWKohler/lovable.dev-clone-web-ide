@@ -101,10 +101,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }) : a));
             break;
           }
-          case 'createFile': {
-            console.log("create file called")
+          case 'writeFile': {
+            console.log("write file called")
             const path = String(args.path ?? '');
-            const res = await WebContainerAgent.createFile(path);
+            const content = String(args.content ?? '');
+            const res = await WebContainerAgent.writeFile(path, content);
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,

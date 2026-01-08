@@ -121,8 +121,8 @@ export const WebContainerAgent = {
     return container.fs.readFile(path, 'utf8');
   },
 
-  async createFile(filePath: string): Promise<
-    | { ok: true; message: string; path: string }
+  async writeFile(filePath: string, content: string): Promise<
+    | { ok: true; message: string; path: string; created: boolean }
     | { ok: false; message: string; path?: string }
   > {
     const container = await this.getContainer();
@@ -137,7 +137,6 @@ export const WebContainerAgent = {
         return { ok: false, message: 'Invalid file path', path };
       }
 
-      // Refuse to overwrite existing files/directories
       // Check if a directory exists at this path
       try {
         await container.fs.readdir(path);
@@ -145,13 +144,16 @@ export const WebContainerAgent = {
       } catch {
         // Expected - directory doesn't exist
       }
-      // Check if a file exists at this path
+
+      // Check if file already exists (to determine created vs overwritten)
+      let isNewFile = false;
       try {
         await container.fs.readFile(path, 'utf8');
-        return { ok: false, message: 'File already exists', path };
       } catch (err) {
         const msg = String(err ?? '');
-        if (!/ENOENT/.test(msg)) {
+        if (/ENOENT/.test(msg)) {
+          isNewFile = true;
+        } else {
           // Unknown error (e.g., permission), surface it
           throw err;
         }
@@ -168,10 +170,12 @@ export const WebContainerAgent = {
         }
       }
 
-      // Create an empty file
-      await container.fs.writeFile(path, '');
+      // Write the file with content
+      await container.fs.writeFile(path, content);
       await WebContainerManager.saveProjectState('default');
-      return { ok: true, message: `Created file ${path}`, path };
+
+      const action = isNewFile ? 'Created' : 'Overwrote';
+      return { ok: true, message: `${action} file ${path}`, path, created: isNewFile };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { ok: false, message };
@@ -181,9 +185,9 @@ export const WebContainerAgent = {
   async applyDiff(filePath: string, diff: string): Promise<ApplyDiffResult> {
     const container = await this.getContainer();
 
-    // Read existing content; if file doesn't exist, treat as empty so we can create it
+    // Read existing content; if file doesn't exist or is empty, reject and suggest writeFile
     let original = '';
-    let isNewFile = false;
+    let fileExists = true;
 
     try {
       original = await container.fs.readFile(filePath, 'utf8');
@@ -197,9 +201,23 @@ export const WebContainerAgent = {
           message: `Error reading file: ${message}`,
         };
       }
-      // ENOENT -> new file creation path
-      isNewFile = true;
+      // ENOENT -> file doesn't exist
+      fileExists = false;
       original = '';
+    }
+
+    // Reject diffing into empty or non-existent files
+    if (original.trim() === '') {
+      const reason = !fileExists
+        ? `File "${filePath}" does not exist.`
+        : `File "${filePath}" is empty.`;
+      return {
+        ok: false,
+        applied: 0,
+        failed: 0,
+        message: `${reason} Cannot apply diff to an empty file. Use the writeFile tool instead to create the file with content directly.`,
+        suggestion: 'Use writeFile tool to create the file with the desired content.',
+      };
     }
 
     // Apply the diff with fuzzy matching
@@ -221,19 +239,6 @@ export const WebContainerAgent = {
     }
 
     // We have at least some successful applications
-    // Ensure parent directory exists for new files
-    if (isNewFile) {
-      const lastSlash = filePath.lastIndexOf('/');
-      const dir = lastSlash > 0 ? filePath.slice(0, lastSlash) || '/' : '/';
-      try {
-        if (dir && dir !== '/') {
-          await container.fs.mkdir(dir, { recursive: true });
-        }
-      } catch {
-        // Ignore mkdir errors
-      }
-    }
-
     // Write the file
     await container.fs.writeFile(filePath, result.content!);
     await WebContainerManager.saveProjectState('default');
