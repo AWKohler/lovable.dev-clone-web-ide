@@ -714,14 +714,12 @@ export default function RootLayout() {
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
-import createWebContainerVitePlugin from "./webcontainer-vite-plugin.js"
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    createWebContainerVitePlugin()
   ],
   server: {
     watch: {
@@ -939,114 +937,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?`,
-                },
-              },
-              "webcontainer-vite-plugin.js": {
-                file: {
-                  contents: `// Advanced WebContainer Vite integration
-// This plugin provides better file watching for WebContainer environments
-
-export function createWebContainerVitePlugin() {
-  let server;
-
-  return {
-    name: 'webcontainer-integration',
-
-    configureServer(devServer) {
-      server = devServer;
-
-      // Try to detect if we're in a WebContainer environment
-      const isWebContainer = typeof window !== 'undefined' &&
-        (window.webcontainer || window.__WEBCONTAINER__ || process.env.VITE_WEBCONTAINER);
-
-      if (!isWebContainer) {
-        console.log('⚡ Standard Vite watcher (not in WebContainer)');
-        return;
-      }
-
-      console.log('🌐 WebContainer environment detected, optimizing watcher...');
-
-      // Override the default watcher behavior
-      const originalWatcher = server.watcher;
-      const watchedFiles = new Set();
-      const pendingEvents = new Map();
-
-      // Create a more WebContainer-friendly watcher
-      server.watcher = {
-        ...originalWatcher,
-
-        // Debounced emit to prevent rapid-fire events
-        emit(event, filePath, ...args) {
-          const key = event + ':' + filePath;
-
-          // Clear any pending event for this file
-          if (pendingEvents.has(key)) {
-            clearTimeout(pendingEvents.get(key));
-          }
-
-          // Debounce the event
-          const timeout = setTimeout(() => {
-            console.log('🔄 File', event + ':', filePath);
-            originalWatcher.emit.call(this, event, filePath, ...args);
-            pendingEvents.delete(key);
-          }, 75);
-
-          pendingEvents.set(key, timeout);
-        },
-
-        // Override close to clean up
-        close() {
-          pendingEvents.forEach(timeout => clearTimeout(timeout));
-          pendingEvents.clear();
-          return originalWatcher.close.call(this);
-        }
-      };
-
-      console.log('🔧 WebContainer watcher optimizations applied');
-    },
-
-    // Configure build optimizations for WebContainer
-    config(config, { command }) {
-      if (command === 'serve') {
-        // Development server optimizations
-        config.server = config.server || {};
-        config.server.watch = config.server.watch || {};
-
-        // Use polling with optimized intervals
-        Object.assign(config.server.watch, {
-          usePolling: true,
-          interval: 150,
-          binaryInterval: 300,
-          ignored: [
-            '**/node_modules/**',
-            '**/.git/**',
-            '**/dist/**',
-            '**/coverage/**',
-            '**/*.log'
-          ]
-        });
-
-        console.log('⚙️ WebContainer Vite config optimizations applied');
-      }
-    },
-
-    // Handle HMR updates with delay
-    handleHotUpdate(ctx) {
-      const { file } = ctx;
-
-      // Add small delay to ensure file operations complete
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          console.log('🔥 HMR update:', file);
-          resolve();
-        }, 50);
-      });
-    }
-  };
-}
-
-// Default export for easy import
-export default createWebContainerVitePlugin;`,
                 },
               },
               src: {
