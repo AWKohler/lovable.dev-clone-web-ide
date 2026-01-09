@@ -1064,6 +1064,74 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
+// ============================================================================
+// Debug: Forward iframe console and Vite HMR status to parent window
+// ============================================================================
+if (typeof window !== 'undefined' && window.parent !== window) {
+  // Forward console messages to parent
+  const originalConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  };
+
+  const forwardToParent = (level: string, ...args: unknown[]) => {
+    try {
+      window.parent.postMessage({
+        type: 'IFRAME_CONSOLE',
+        level,
+        message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '),
+      }, '*');
+    } catch {}
+  };
+
+  console.log = (...args) => { originalConsole.log(...args); forwardToParent('log', ...args); };
+  console.warn = (...args) => { originalConsole.warn(...args); forwardToParent('warn', ...args); };
+  console.error = (...args) => { originalConsole.error(...args); forwardToParent('error', ...args); };
+
+  // Forward uncaught errors
+  window.addEventListener('error', (e) => {
+    window.parent.postMessage({
+      type: 'IFRAME_ERROR',
+      message: e.message,
+      filename: e.filename,
+      lineno: e.lineno,
+      colno: e.colno,
+    }, '*');
+  });
+
+  // Forward unhandled promise rejections
+  window.addEventListener('unhandledrejection', (e) => {
+    window.parent.postMessage({
+      type: 'IFRAME_ERROR',
+      message: 'Unhandled Promise Rejection: ' + String(e.reason),
+    }, '*');
+  });
+
+  // Listen for Vite HMR events
+  if (import.meta.hot) {
+    import.meta.hot.on('vite:beforeUpdate', () => {
+      window.parent.postMessage({ type: 'VITE_HMR', event: 'beforeUpdate' }, '*');
+    });
+    import.meta.hot.on('vite:afterUpdate', () => {
+      window.parent.postMessage({ type: 'VITE_HMR', event: 'afterUpdate' }, '*');
+    });
+    import.meta.hot.on('vite:error', (err) => {
+      window.parent.postMessage({ type: 'VITE_HMR', event: 'error', error: err }, '*');
+    });
+    import.meta.hot.on('vite:ws:connect', () => {
+      window.parent.postMessage({ type: 'VITE_HMR', event: 'connected' }, '*');
+    });
+    import.meta.hot.on('vite:ws:disconnect', () => {
+      window.parent.postMessage({ type: 'VITE_HMR', event: 'disconnected' }, '*');
+    });
+    // Signal that HMR module is loaded
+    window.parent.postMessage({ type: 'VITE_HMR', event: 'hmrModuleLoaded' }, '*');
+  } else {
+    window.parent.postMessage({ type: 'VITE_HMR', event: 'hmrNotAvailable' }, '*');
+  }
+}
+
 // HTML Snapshot Capture for Project Thumbnails
 // DO NOT REMOVE: This code enables automatic thumbnail generation
 // It sends the rendered HTML to the parent window for snapshot capture
@@ -1226,6 +1294,47 @@ export function cn(...inputs: ClassValue[]) {
         !event.origin.includes("webcontainer")
       ) {
         return; // Silently ignore untrusted origins
+      }
+
+      // Forward iframe console messages to parent console
+      if (event.data?.type === "IFRAME_CONSOLE") {
+        const { level, message } = event.data;
+        const prefix = "[iframe]";
+        if (level === "error") {
+          console.error(prefix, message);
+        } else if (level === "warn") {
+          console.warn(prefix, message);
+        } else {
+          console.log(prefix, message);
+        }
+        return;
+      }
+
+      // Forward iframe errors to parent console
+      if (event.data?.type === "IFRAME_ERROR") {
+        console.error("[iframe error]", event.data.message, event.data.filename ? `at ${event.data.filename}:${event.data.lineno}:${event.data.colno}` : "");
+        return;
+      }
+
+      // Handle Vite HMR events
+      if (event.data?.type === "VITE_HMR") {
+        const { event: hmrEvent, error } = event.data;
+        if (hmrEvent === "connected") {
+          console.log("🔌 [Vite HMR] Connected");
+        } else if (hmrEvent === "disconnected") {
+          console.warn("⚠️ [Vite HMR] Disconnected");
+        } else if (hmrEvent === "error") {
+          console.error("❌ [Vite HMR] Error:", error);
+        } else if (hmrEvent === "beforeUpdate") {
+          console.log("🔄 [Vite HMR] Updating...");
+        } else if (hmrEvent === "afterUpdate") {
+          console.log("✅ [Vite HMR] Updated");
+        } else if (hmrEvent === "hmrModuleLoaded") {
+          console.log("✅ [Vite HMR] Module loaded - HMR is available");
+        } else if (hmrEvent === "hmrNotAvailable") {
+          console.warn("⚠️ [Vite HMR] Not available (import.meta.hot is undefined)");
+        }
+        return;
       }
 
       if (event.data?.type === "HTML_SNAPSHOT" && event.data?.html) {
