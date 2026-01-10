@@ -25,6 +25,36 @@ export type ApplyDiffResult = {
 // ============================================================================
 
 /**
+ * Generic timeout wrapper for async operations
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operation: string
+): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error(`Operation timed out after ${timeoutMs}ms: ${operation}`)),
+      timeoutMs
+    )
+  );
+  return Promise.race([promise, timeout]);
+}
+
+/**
+ * Safe error message extraction
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+/**
  * Build a comprehensive error message from a DiffResult.
  * This message is designed to help the LLM understand what went wrong
  * and how to fix it.
@@ -90,69 +120,129 @@ export const WebContainerAgent = {
   },
 
   async listFiles(path: string, recursive = false): Promise<string> {
-    const container = await this.getContainer();
-    const lines: string[] = [];
+    try {
+      const container = await this.getContainer();
+      const lines: string[] = [];
+      let fileCount = 0;
+      let dirCount = 0;
 
-    async function walk(dir: string, prefix = ''): Promise<void> {
-      const entries = await container.fs.readdir(dir, { withFileTypes: true });
-      type MinimalDirent = { name: string; isDirectory(): boolean };
-      const sorted = (entries as unknown as MinimalDirent[]).slice().sort((a, b) => {
-        const aDir = a.isDirectory();
-        const bDir = b.isDirectory();
-        if (aDir && !bDir) return -1;
-        if (!aDir && bDir) return 1;
-        return a.name.localeCompare(b.name);
-      });
-      for (const entry of sorted) {
-        const full = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`;
-        lines.push(`${prefix}${entry.isDirectory() ? '📁' : '📄'} ${entry.name}`);
-        if (recursive && entry.isDirectory()) {
-          await walk(full, prefix + '  ');
+      async function walk(dir: string, prefix = ''): Promise<void> {
+        const entries = await container.fs.readdir(dir, { withFileTypes: true });
+        type MinimalDirent = { name: string; isDirectory(): boolean };
+        const sorted = (entries as unknown as MinimalDirent[]).slice().sort((a, b) => {
+          const aDir = a.isDirectory();
+          const bDir = b.isDirectory();
+          if (aDir && !bDir) return -1;
+          if (!aDir && bDir) return 1;
+          return a.name.localeCompare(b.name);
+        });
+        for (const entry of sorted) {
+          const full = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`;
+          lines.push(`${prefix}${entry.isDirectory() ? '📁' : '📄'} ${entry.name}`);
+
+          if (entry.isDirectory()) {
+            dirCount++;
+            if (recursive) {
+              await walk(full, prefix + '  ');
+            }
+          } else {
+            fileCount++;
+          }
         }
       }
-    }
 
-    await walk(path);
-    return lines.join('\n');
+      // Generous 60 second timeout for large directory trees
+      await withTimeout(walk(path), 60000, `listFiles(${path})`);
+
+      const summary = `\n\nTotal: ${fileCount} file(s), ${dirCount} director${dirCount === 1 ? 'y' : 'ies'}`;
+      return lines.join('\n') + summary;
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      return `❌ Error listing files at "${path}": ${errorMsg}\n\nThis could mean:\n- The path doesn't exist\n- You don't have permission to read it\n- The operation timed out (took longer than 60 seconds)\n\nSuggestion: Try listing a more specific subdirectory or use a non-recursive listing.`;
+    }
   },
 
   async readFile(path: string): Promise<string> {
-    const container = await this.getContainer();
-    return container.fs.readFile(path, 'utf8');
+    try {
+      const container = await this.getContainer();
+
+      // Generous 30 second timeout for large files
+      const content = await withTimeout(
+        container.fs.readFile(path, 'utf8'),
+        30000,
+        `readFile(${path})`
+      );
+
+      const lines = content.split('\n').length;
+      const size = new Blob([content]).size;
+      const sizeKB = (size / 1024).toFixed(2);
+
+      // Add helpful metadata at the end
+      return `${content}\n\n📊 File info: ${lines} lines, ${sizeKB} KB`;
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      return `❌ Error reading file "${path}": ${errorMsg}\n\nPossible reasons:\n- File doesn't exist (use listFiles to verify the path)\n- File is binary or unreadable as text\n- File is too large and timed out (took longer than 30 seconds)\n- Permission denied\n\nSuggestion: Double-check the file path with listFiles first.`;
+    }
   },
 
   async writeFile(filePath: string, content: string): Promise<
-    | { ok: true; message: string; path: string; created: boolean }
-    | { ok: false; message: string; path?: string }
+    | { ok: true; message: string; path: string; created: boolean; size?: string }
+    | { ok: false; message: string; path?: string; suggestion?: string }
   > {
-    const container = await this.getContainer();
     try {
+      const container = await this.getContainer();
       let path = String(filePath || '').trim();
-      if (!path) return { ok: false, message: 'Path is required' };
+
+      // Validate path
+      if (!path) {
+        return {
+          ok: false,
+          message: 'Path is required',
+          suggestion: 'Provide a valid file path like "/src/App.tsx"',
+        };
+      }
+
       // Normalize to absolute path, collapse duplicate slashes, remove trailing slash
       if (!path.startsWith('/')) path = '/' + path;
       path = path.replace(/\/+/g, '/');
       if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
       if (path === '/' || path.endsWith('/')) {
-        return { ok: false, message: 'Invalid file path', path };
+        return {
+          ok: false,
+          message: 'Invalid file path',
+          path,
+          suggestion: 'Provide a complete file path including filename, not a directory path',
+        };
       }
 
-      // Check if a directory exists at this path
+      // Check if a directory exists at this path (30 second timeout)
       try {
-        await container.fs.readdir(path);
-        return { ok: false, message: 'A directory with this name already exists', path };
-      } catch {
-        // Expected - directory doesn't exist
+        await withTimeout(container.fs.readdir(path), 30000, `readdir check for ${path}`);
+        return {
+          ok: false,
+          message: 'A directory with this name already exists',
+          path,
+          suggestion: 'Choose a different name or delete the directory first',
+        };
+      } catch (err) {
+        // Expected - directory doesn't exist, continue
+        const errMsg = getErrorMessage(err);
+        if (!errMsg.includes('ENOENT') && !errMsg.includes('timed out')) {
+          throw err; // Unexpected error
+        }
       }
 
       // Check if file already exists (to determine created vs overwritten)
       let isNewFile = false;
       try {
-        await container.fs.readFile(path, 'utf8');
+        await withTimeout(container.fs.readFile(path, 'utf8'), 30000, `read check for ${path}`);
       } catch (err) {
-        const msg = String(err ?? '');
-        if (/ENOENT/.test(msg)) {
+        const msg = getErrorMessage(err);
+        if (msg.includes('ENOENT')) {
           isNewFile = true;
+        } else if (msg.includes('timed out')) {
+          // File might be huge, treat as existing
+          isNewFile = false;
         } else {
           // Unknown error (e.g., permission), surface it
           throw err;
@@ -164,236 +254,523 @@ export const WebContainerAgent = {
       const dir = lastSlash > 0 ? path.slice(0, lastSlash) || '/' : '/';
       if (dir && dir !== '/') {
         try {
-          await container.fs.mkdir(dir, { recursive: true });
-        } catch {
-          // Ignore mkdir errors
+          await withTimeout(
+            container.fs.mkdir(dir, { recursive: true }),
+            30000,
+            `mkdir for ${dir}`
+          );
+        } catch (err) {
+          const errMsg = getErrorMessage(err);
+          // Only ignore EEXIST errors
+          if (!errMsg.includes('EEXIST') && !errMsg.includes('already exists')) {
+            return {
+              ok: false,
+              message: `Failed to create parent directory: ${errMsg}`,
+              path,
+              suggestion: 'Check if the parent path is valid and you have permissions',
+            };
+          }
         }
       }
 
-      // Write the file with content
-      await container.fs.writeFile(path, content);
-      await WebContainerManager.saveProjectState('default');
+      // Write the file with content (30 second timeout for large files)
+      await withTimeout(
+        container.fs.writeFile(path, content),
+        30000,
+        `writeFile for ${path}`
+      );
 
-      const action = isNewFile ? 'Created' : 'Overwrote';
-      return { ok: true, message: `${action} file ${path}`, path, created: isNewFile };
+      // Save project state (10 second timeout)
+      try {
+        await withTimeout(
+          WebContainerManager.saveProjectState('default'),
+          10000,
+          'saveProjectState'
+        );
+      } catch {
+        // Non-fatal, log but continue
+      }
+
+      const size = new Blob([content]).size;
+      const sizeKB = (size / 1024).toFixed(2);
+      const lines = content.split('\n').length;
+      const action = isNewFile ? '✅ Created' : '✏️  Overwrote';
+
+      return {
+        ok: true,
+        message: `${action} file ${path} (${lines} lines, ${sizeKB} KB)`,
+        path,
+        created: isNewFile,
+        size: `${sizeKB} KB`,
+      };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, message };
+      const message = getErrorMessage(err);
+      return {
+        ok: false,
+        message: `Error writing file: ${message}`,
+        path: filePath,
+        suggestion: 'Check the file path, ensure parent directories exist, and verify you have write permissions',
+      };
     }
   },
 
   async applyDiff(filePath: string, diff: string): Promise<ApplyDiffResult> {
-    const container = await this.getContainer();
-
-    // Read existing content; if file doesn't exist or is empty, reject and suggest writeFile
-    let original = '';
-    let fileExists = true;
-
     try {
-      original = await container.fs.readFile(filePath, 'utf8');
-    } catch (err) {
-      const message = String(err ?? '');
-      if (!/ENOENT/.test(message)) {
+      const container = await this.getContainer();
+
+      // Read existing content; if file doesn't exist or is empty, reject and suggest writeFile
+      let original = '';
+      let fileExists = true;
+
+      try {
+        // 30 second timeout for reading file
+        original = await withTimeout(
+          container.fs.readFile(filePath, 'utf8'),
+          30000,
+          `readFile for applyDiff(${filePath})`
+        );
+      } catch (err) {
+        const message = getErrorMessage(err);
+        if (message.includes('ENOENT')) {
+          // ENOENT -> file doesn't exist
+          fileExists = false;
+          original = '';
+        } else {
+          return {
+            ok: false,
+            applied: 0,
+            failed: 0,
+            message: `❌ Error reading file: ${message}`,
+            suggestion: 'Check if the file path is correct and the file is readable',
+          };
+        }
+      }
+
+      // Reject diffing into empty or non-existent files
+      if (original.trim() === '') {
+        const reason = !fileExists
+          ? `File "${filePath}" does not exist.`
+          : `File "${filePath}" is empty.`;
         return {
           ok: false,
           applied: 0,
           failed: 0,
-          message: `Error reading file: ${message}`,
+          message: `❌ ${reason} Cannot apply diff to an empty file. Use the writeFile tool instead to create the file with content directly.`,
+          suggestion: 'Use writeFile tool to create the file with the desired content.',
         };
       }
-      // ENOENT -> file doesn't exist
-      fileExists = false;
-      original = '';
-    }
 
-    // Reject diffing into empty or non-existent files
-    if (original.trim() === '') {
-      const reason = !fileExists
-        ? `File "${filePath}" does not exist.`
-        : `File "${filePath}" is empty.`;
+      // Apply the diff with fuzzy matching (60 second timeout for large diffs)
+      const result = await withTimeout(
+        Promise.resolve(applyDiff(original, diff)),
+        60000,
+        `applyDiff processing for ${filePath}`
+      );
+
+      // Build response based on result
+      if (!result.success || result.appliedCount === 0) {
+        const errorMessage = buildDiffErrorMessage(result, filePath);
+        const suggestion = buildDiffSuggestion(result);
+
+        return {
+          ok: false,
+          applied: result.appliedCount,
+          failed: result.failedBlocks.length,
+          message: `❌ ${errorMessage}`,
+          failedBlocks: result.failedBlocks,
+          suggestion,
+        };
+      }
+
+      // We have at least some successful applications
+      // Write the file (30 second timeout)
+      await withTimeout(
+        container.fs.writeFile(filePath, result.content!),
+        30000,
+        `writeFile after applyDiff(${filePath})`
+      );
+
+      // Save project state (10 second timeout, non-fatal)
+      try {
+        await withTimeout(
+          WebContainerManager.saveProjectState('default'),
+          10000,
+          'saveProjectState after applyDiff'
+        );
+      } catch {
+        // Non-fatal, continue
+      }
+
+      // Build success message
+      const totalBlocks = result.appliedCount + result.failedBlocks.length;
+      let message: string;
+
+      if (result.failedBlocks.length === 0) {
+        message = `✅ Successfully applied ${result.appliedCount} change(s) to ${filePath}.`;
+      } else {
+        message = `⚠️  Applied ${result.appliedCount}/${totalBlocks} changes to ${filePath}. ` +
+          `${result.failedBlocks.length} block(s) failed - use readFile to check current content.`;
+      }
+
+      const response: ApplyDiffResult = {
+        ok: true,
+        applied: result.appliedCount,
+        failed: result.failedBlocks.length,
+        message,
+      };
+
+      // Include failure details if there were partial failures
+      if (result.failedBlocks.length > 0) {
+        response.failedBlocks = result.failedBlocks;
+        response.suggestion = buildDiffSuggestion(result);
+      }
+
+      return response;
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
       return {
         ok: false,
         applied: 0,
         failed: 0,
-        message: `${reason} Cannot apply diff to an empty file. Use the writeFile tool instead to create the file with content directly.`,
-        suggestion: 'Use writeFile tool to create the file with the desired content.',
+        message: `❌ Unexpected error in applyDiff: ${errorMsg}`,
+        suggestion: 'This might be a timeout or system error. Try using writeFile to rewrite the entire file instead.',
       };
     }
-
-    // Apply the diff with fuzzy matching
-    const result = applyDiff(original, diff);
-
-    // Build response based on result
-    if (!result.success || result.appliedCount === 0) {
-      const errorMessage = buildDiffErrorMessage(result, filePath);
-      const suggestion = buildDiffSuggestion(result);
-
-      return {
-        ok: false,
-        applied: result.appliedCount,
-        failed: result.failedBlocks.length,
-        message: errorMessage,
-        failedBlocks: result.failedBlocks,
-        suggestion,
-      };
-    }
-
-    // We have at least some successful applications
-    // Write the file
-    await container.fs.writeFile(filePath, result.content!);
-    await WebContainerManager.saveProjectState('default');
-
-    // Build success message
-    const totalBlocks = result.appliedCount + result.failedBlocks.length;
-    let message: string;
-
-    if (result.failedBlocks.length === 0) {
-      message = `Successfully applied ${result.appliedCount} change(s) to ${filePath}.`;
-    } else {
-      message = `Applied ${result.appliedCount}/${totalBlocks} changes to ${filePath}. ` +
-        `${result.failedBlocks.length} block(s) failed - use readFile to check current content.`;
-    }
-
-    const response: ApplyDiffResult = {
-      ok: true,
-      applied: result.appliedCount,
-      failed: result.failedBlocks.length,
-      message,
-    };
-
-    // Include failure details if there were partial failures
-    if (result.failedBlocks.length > 0) {
-      response.failedBlocks = result.failedBlocks;
-      response.suggestion = buildDiffSuggestion(result);
-    }
-
-    return response;
   },
 
-  async *searchFiles(startPath: string, query: string): AsyncGenerator<GrepResult> {
-    const container = await this.getContainer();
-    const queue: string[] = [startPath];
-    const regex = new RegExp(query);
+  async *searchFiles(startPath: string, query: string): AsyncGenerator<GrepResult | { error: string; progress: string }> {
+    try {
+      const container = await this.getContainer();
+      const queue: string[] = [startPath];
+      let regex: RegExp;
 
-    while (queue.length) {
-      const dir = queue.shift()!;
-      const entries = await container.fs.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const full = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`;
-        if (entry.isDirectory()) {
-          if (full.includes('/node_modules') || full.includes('/.git')) continue;
-          queue.push(full);
-        } else {
-          try {
-            const content = await container.fs.readFile(full, 'utf8');
-            const lines = content.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-              if (regex.test(lines[i])) {
-                yield { filePath: full, lineNumber: i + 1, lineContent: lines[i] };
+      // Validate regex pattern
+      try {
+        regex = new RegExp(query);
+      } catch (err) {
+        yield {
+          error: `❌ Invalid regex pattern: ${getErrorMessage(err)}`,
+          progress: 'Pattern validation failed',
+        };
+        return;
+      }
+
+      let filesScanned = 0;
+      let matchesFound = 0;
+      let dirsScanned = 0;
+      const startTime = Date.now();
+      const MAX_SEARCH_TIME = 120000; // 2 minutes max for searches
+
+      while (queue.length) {
+        // Check timeout
+        if (Date.now() - startTime > MAX_SEARCH_TIME) {
+          yield {
+            error: `⏱️  Search timed out after 2 minutes`,
+            progress: `Scanned ${filesScanned} files in ${dirsScanned} directories, found ${matchesFound} matches before timeout`,
+          };
+          return;
+        }
+
+        const dir = queue.shift()!;
+        dirsScanned++;
+
+        try {
+          const entries = await withTimeout(
+            container.fs.readdir(dir, { withFileTypes: true }),
+            5000,
+            `readdir ${dir}`
+          );
+
+          for (const entry of entries) {
+            const full = dir === '/' ? `/${entry.name}` : `${dir}/${entry.name}`;
+            if (entry.isDirectory()) {
+              if (full.includes('/node_modules') || full.includes('/.git') || full.includes('/.next')) continue;
+              queue.push(full);
+            } else {
+              filesScanned++;
+              try {
+                const content = await withTimeout(
+                  container.fs.readFile(full, 'utf8'),
+                  3000,
+                  `readFile ${full}`
+                );
+                const lines = content.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                  if (regex.test(lines[i])) {
+                    matchesFound++;
+                    yield { filePath: full, lineNumber: i + 1, lineContent: lines[i].trim() };
+                  }
+                }
+              } catch {
+                // ignore unreadable or timed out files
               }
             }
-          } catch {
-            // ignore unreadable files
           }
+        } catch (err) {
+          // Skip directories we can't read
+          continue;
+        }
+
+        // Yield progress every 50 files
+        if (filesScanned % 50 === 0) {
+          yield {
+            error: '',
+            progress: `🔍 Searched ${filesScanned} files in ${dirsScanned} directories, found ${matchesFound} matches so far...`,
+          };
         }
       }
+
+      // Final summary
+      yield {
+        error: '',
+        progress: `✅ Search complete: ${filesScanned} files scanned, ${matchesFound} matches found`,
+      };
+    } catch (err) {
+      yield {
+        error: `❌ Search failed: ${getErrorMessage(err)}`,
+        progress: 'Search terminated due to error',
+      };
     }
   },
 
   async *executeCommand(command: string, args: string[]): AsyncGenerator<string> {
-    // Prevent starting the dev server directly via commands; require dedicated tool
-    const joined = [command, ...(args || [])].join(' ').toLowerCase();
-    const forbidden = [
-      'pnpm dev',
-      'npm run dev',
-      'vite',
-      'expo start',
-      'pnpm exec expo start',
-      'npx expo start',
-    ];
-    for (const pat of forbidden) {
-      if (joined.includes(pat)) {
-        yield 'Starting the dev server via shell is disabled. Use the startDevServer tool instead.';
+    try {
+      // Prevent starting the dev server directly via commands; require dedicated tool
+      const joined = [command, ...(args || [])].join(' ').toLowerCase();
+      const forbidden = [
+        'pnpm dev',
+        'npm run dev',
+        'vite',
+        'expo start',
+        'pnpm exec expo start',
+        'npx expo start',
+      ];
+      for (const pat of forbidden) {
+        if (joined.includes(pat)) {
+          yield `❌ Starting the dev server via shell is disabled. Use the startDevServer tool instead.\n\nCommand blocked: ${command} ${args.join(' ')}`;
+          return;
+        }
+      }
+
+      yield `🚀 Executing: ${command} ${args.join(' ')}\n`;
+
+      // Ensure completion even for commands that produce no output (e.g., rmdir),
+      // and guard against hanging streams by using a timeout and cancel.
+      const container = await this.getContainer();
+      const proc = await container.spawn(command, args);
+
+      const reader = proc.output.getReader();
+      let combined = '';
+      let reading = true;
+
+      // Drain output concurrently while we wait for process exit
+      const drain = (async () => {
+        try {
+          while (reading) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) {
+              combined += value;
+            }
+          }
+        } catch {
+          // ignore
+        } finally {
+          try { reader.releaseLock(); } catch {}
+        }
+      })();
+
+      // Add a max timeout in case a command never exits cleanly (e.g., spinner processes)
+      // Use 3 minutes for commands (more generous than before)
+      const MAX_MS = 180_000; // 3 minutes
+      const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(-1), MAX_MS));
+
+      const exitCode = await Promise.race([proc.exit, timeout]);
+      if (exitCode === -1) {
+        // Timed out; try to stop the process and finish draining
+        try { proc.kill(); } catch {}
+        yield `⏱️  Command timed out after 3 minutes and was terminated.\n\nOutput before timeout:\n${combined.trim() || '(no output)'}`;
+        reading = false;
+        try { await reader.cancel(); } catch {}
+        await drain;
         return;
       }
-    }
-    // Ensure completion even for commands that produce no output (e.g., rmdir),
-    // and guard against hanging streams by using a timeout and cancel.
-    const container = await this.getContainer();
-    const proc = await container.spawn(command, args);
 
-    const reader = proc.output.getReader();
-    let combined = '';
-    let reading = true;
+      // Give a short grace period for any final buffered output, then cancel reader
+      await new Promise((r) => setTimeout(r, 150));
+      reading = false;
+      try { await reader.cancel(); } catch {}
+      await drain; // Ensure the drain task finishes
 
-    // Drain output concurrently while we wait for process exit
-    const drain = (async () => {
-      try {
-        while (reading) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) combined += value;
+      // Build final result with context
+      const hasOutput = combined.trim().length > 0;
+      let final = '';
+
+      if (exitCode === 0) {
+        final = `✅ Command completed successfully (exit code 0)\n\n`;
+        if (hasOutput) {
+          final += `Output:\n${combined.trim()}`;
+        } else {
+          final += `(No output - command completed silently)`;
         }
-      } catch {
-        // ignore
-      } finally {
-        try { reader.releaseLock(); } catch {}
+      } else {
+        final = `❌ Command failed with exit code ${exitCode}\n\n`;
+        if (hasOutput) {
+          final += `Output:\n${combined.trim()}\n\nSuggestion: Check the error output above for details on what went wrong.`;
+        } else {
+          final += `(No output provided)\n\nSuggestion: The command may not exist or failed immediately.`;
+        }
       }
-    })();
 
-    // Add a max timeout in case a command never exits cleanly (e.g., spinner processes)
-    const MAX_MS = 120_000; // 2 minutes default safety
-    const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(-1), MAX_MS));
-
-    const exitCode = await Promise.race([proc.exit, timeout]);
-    if (exitCode === -1) {
-      // Timed out; try to stop the process and finish draining
-      try { proc.kill(); } catch {}
+      yield final;
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      yield `❌ Failed to execute command: ${errorMsg}\n\nPossible reasons:\n- Command doesn't exist\n- Insufficient permissions\n- WebContainer error\n\nSuggestion: Verify the command name and try a simpler command first.`;
     }
-
-    // Give a short grace period for any final buffered output, then cancel reader
-    await new Promise((r) => setTimeout(r, 150));
-    reading = false;
-    try { await reader.cancel(); } catch {}
-    await drain; // Ensure the drain task finishes
-
-    // Yield once with the full output so tool call can complete
-    const final = combined.trim().length > 0 ? combined : `Command exited with code ${exitCode}`;
-    yield final;
   },
 
   async startDevServer(): Promise<{ ok: boolean; message: string; alreadyRunning?: boolean }> {
     try {
-      return await DevServerManager.start();
+      // 60 second timeout for starting dev server (includes dependency installation)
+      const result = await withTimeout(
+        DevServerManager.start(),
+        60000,
+        'startDevServer'
+      );
+
+      // Add verbose messaging
+      if (result.ok) {
+        if (result.alreadyRunning) {
+          result.message = `ℹ️  ${result.message}\n\nThe dev server was already running. No action needed.`;
+        } else {
+          result.message = `🚀 ${result.message}\n\n✅ The dev server is now running. Use getDevServerLog to check its output, or refreshPreview to reload the preview pane.`;
+        }
+      } else {
+        result.message = `❌ ${result.message}\n\nSuggestion: Check if dependencies are installed (run 'pnpm install' via executeCommand first), or check the project for configuration errors.`;
+      }
+
+      return result;
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      const errorMsg = getErrorMessage(e);
+      return {
+        ok: false,
+        message: `❌ Failed to start dev server: ${errorMsg}\n\nPossible reasons:\n- Dependencies not installed (run 'pnpm install' first)\n- Port already in use\n- Configuration error in vite.config or package.json\n- Operation timed out (took longer than 60 seconds)\n\nSuggestion: Use executeCommand to run 'pnpm install' if you haven't already, then try again.`,
+      };
     }
   },
 
-  async getDevServerLog(linesBack: number): Promise<{ ok: boolean; message: string; log?: string }> {
-    // If server not running, return message instructing to start
-    if (!(await DevServerManager.isRunning())) {
+  async getDevServerLog(linesBack: number = 200): Promise<{ ok: boolean; message: string; log?: string }> {
+    try {
+      // Check if server is running with timeout
+      const isRunning = await withTimeout(
+        DevServerManager.isRunning(),
+        5000,
+        'isRunning check'
+      );
+
+      if (!isRunning) {
+        return {
+          ok: false,
+          message: `📭 Dev server is not running. Use startDevServer tool to start it first.\n\nNote: The server needs to be started before you can view its logs.`,
+        };
+      }
+
+      // Get logs (synchronous, no timeout needed)
+      const result = DevServerManager.getLog(linesBack);
+
+      // Add context to the response
+      if (result.ok && result.log) {
+        result.message = `📊 Retrieved last ${linesBack} lines of dev server output:\n\n` + result.log;
+      } else if (result.ok && !result.log) {
+        result.message = `📭 Dev server is running but has no output yet. Wait a moment and try again.`;
+      } else {
+        result.message = `❌ ${result.message}`;
+      }
+
+      return result;
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
       return {
         ok: false,
-        message: 'Dev server is not running. Use startDevServer tool to start it.',
+        message: `❌ Failed to get dev server log: ${errorMsg}\n\nThis might be a temporary error. Try again in a moment.`,
       };
     }
-    return DevServerManager.getLog(linesBack);
   },
 
   async stopDevServer(): Promise<{ ok: boolean; message: string; alreadyStopped?: boolean }> {
     try {
-      return await DevServerManager.stop();
+      // 30 second timeout for stopping server
+      const result = await withTimeout(
+        DevServerManager.stop(),
+        30000,
+        'stopDevServer'
+      );
+
+      // Add verbose messaging
+      if (result.ok) {
+        if (result.alreadyStopped) {
+          result.message = `ℹ️  ${result.message}\n\nThe dev server was not running. No action needed.`;
+        } else {
+          result.message = `✅ ${result.message}\n\nThe dev server has been stopped. You can start it again with startDevServer when needed.`;
+        }
+      } else {
+        result.message = `❌ ${result.message}\n\nSuggestion: The server process may have already terminated, or there may be a system error.`;
+      }
+
+      return result;
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      const errorMsg = getErrorMessage(e);
+      return {
+        ok: false,
+        message: `❌ Failed to stop dev server: ${errorMsg}\n\nPossible reasons:\n- Process already terminated\n- Permission issue\n- Operation timed out (took longer than 30 seconds)\n\nSuggestion: The server may have already stopped. Try checking with isDevServerRunning.`,
+      };
     }
   },
 
   async isDevServerRunning(): Promise<boolean> {
     try {
-      return await DevServerManager.isRunning();
+      return await withTimeout(
+        DevServerManager.isRunning(),
+        5000,
+        'isDevServerRunning'
+      );
     } catch {
+      // If we can't determine status, assume not running
       return false;
+    }
+  },
+
+  async refreshPreview(): Promise<{ ok: boolean; message: string }> {
+    try {
+      // Check if server is running first
+      const isRunning = await withTimeout(
+        DevServerManager.isRunning(),
+        5000,
+        'isRunning check for refresh'
+      );
+
+      if (!isRunning) {
+        return {
+          ok: false,
+          message: `📭 Cannot refresh preview: dev server is not running.\n\nSuggestion: Start the dev server with startDevServer first.`,
+        };
+      }
+
+      // Dispatch refresh event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('preview-refresh'));
+      }
+
+      return {
+        ok: true,
+        message: `✅ Preview refresh triggered successfully.\n\nThe preview pane should reload momentarily to show your latest changes.`,
+      };
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      return {
+        ok: false,
+        message: `❌ Failed to refresh preview: ${errorMsg}\n\nThis might be a browser environment issue.`,
+      };
     }
   },
 };

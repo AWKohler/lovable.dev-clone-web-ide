@@ -170,11 +170,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           case 'searchFiles': {
             console.log("search files called")
             const results: GrepResult[] = [];
+            let lastProgress = '';
             for await (const r of WebContainerAgent.searchFiles(
               String(args.path ?? '/'),
               String(args.query ?? '')
             )) {
-              results.push(r);
+              // Check if it's a progress/error message or actual result
+              if ('filePath' in r && 'lineNumber' in r && 'lineContent' in r) {
+                results.push(r);
+              } else if ('progress' in r || 'error' in r) {
+                // Store progress/error messages for logging
+                lastProgress = r.progress || r.error || '';
+                console.log('Search progress:', lastProgress);
+              }
             }
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(results) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
