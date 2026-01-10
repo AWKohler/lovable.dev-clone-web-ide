@@ -73,6 +73,7 @@ export function Preview({
   const [zoom, setZoom] = useState(1);
   const [showSnapshot, setShowSnapshot] = useState(true);
   const [snapshotHtml, setSnapshotHtml] = useState<string | null>(null);
+  const [isRealPreviewLoaded, setIsRealPreviewLoaded] = useState(false);
 
   const activePreview = previews[activePreviewIndex];
 
@@ -86,10 +87,18 @@ export function Preview({
     }
   }, [htmlSnapshotUrl, snapshotHtml]);
 
-  // Hide snapshot once dev server is running
+  // Hide snapshot only when real preview has loaded
   useEffect(() => {
-    if (isDevServerRunning) {
+    if (isDevServerRunning && isRealPreviewLoaded) {
       setShowSnapshot(false);
+    }
+  }, [isDevServerRunning, isRealPreviewLoaded]);
+
+  // Show snapshot again when dev server stops
+  useEffect(() => {
+    if (!isDevServerRunning) {
+      setShowSnapshot(true);
+      setIsRealPreviewLoaded(false);
     }
   }, [isDevServerRunning]);
 
@@ -137,6 +146,8 @@ export function Preview({
       const url = new URL(activePreview.baseUrl + path);
       url.searchParams.set("_t", Date.now().toString());
       setIframeUrl(url.toString());
+      // Reset loaded state when URL changes so we wait for new content
+      setIsRealPreviewLoaded(false);
     }
   }, [activePreview, currentPath, internalPath]);
 
@@ -380,6 +391,56 @@ export function Preview({
         );
       }
 
+      // Web platform - show full-screen snapshot
+      return (
+        <div className="h-full flex flex-col bg-surface rounded-xl border border-border relative overflow-hidden">
+          {/* HTML Snapshot Content */}
+          <div className="flex-1 relative">
+            <iframe
+              srcDoc={snapshotHtml || ''}
+              className="w-full h-full border-none"
+              title="Project Snapshot"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            />
+            {/* Grayed overlay with play button */}
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
+              <button
+                onClick={onToggleDevServer}
+                disabled={Boolean(isInstalling) || Boolean(isStartingServer)}
+                className={cn(
+                  "group relative flex items-center justify-center w-24 h-24 rounded-full transition-all duration-300",
+                  "bg-white/90 hover:bg-white hover:scale-110 shadow-2xl",
+                  (isInstalling || isStartingServer) && "cursor-not-allowed",
+                )}
+              >
+                {isInstalling || isStartingServer ? (
+                  <span className="inline-flex h-10 w-10 rounded-full border-4 border-green-600 border-t-transparent animate-spin" />
+                ) : (
+                  <Play
+                    size={40}
+                    className="text-green-600 fill-green-600 ml-1"
+                  />
+                )}
+              </button>
+            </div>
+          </div>
+          {/* Status text */}
+          <div className="absolute bottom-6 left-0 right-0 text-center">
+            <p className="text-white text-sm font-medium drop-shadow-lg">
+              {isInstalling
+                ? "Installing dependencies..."
+                : isStartingServer
+                  ? "Starting server..."
+                  : "Click to start dev server"}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Show HTML snapshot if available (even when dev server is stopped)
+    // Otherwise show default "No Preview Yet" message
+    if (htmlSnapshotUrl && snapshotHtml) {
       // Web platform - show full-screen snapshot
       return (
         <div className="h-full flex flex-col bg-surface rounded-xl border border-border relative overflow-hidden">
@@ -836,7 +897,7 @@ export function Preview({
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center overflow-auto">
+        <div className="flex-1 flex items-center justify-center overflow-auto relative">
           <div
             className={cn(
               "bg-surface overflow-hidden rounded-xl",
@@ -851,8 +912,27 @@ export function Preview({
               title="Preview"
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
               allow="cross-origin-isolated"
+              onLoad={() => {
+                if (iframeUrl) {
+                  setIsRealPreviewLoaded(true);
+                }
+              }}
             />
           </div>
+
+          {/* Snapshot overlay - shows until real preview loads */}
+          {showSnapshot && htmlSnapshotUrl && snapshotHtml && (
+            <div className="absolute inset-0 flex items-center justify-center bg-surface">
+              <div className="w-full h-full relative">
+                <iframe
+                  srcDoc={snapshotHtml || ''}
+                  className="w-full h-full border-none"
+                  title="Project Snapshot"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
