@@ -1,5 +1,6 @@
 import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
+import { sanitizeOutput } from '@/lib/output-sanitizer';
 
 type Proc = {
   kill: () => void;
@@ -18,8 +19,11 @@ class DevServerManagerImpl {
   private initialized = false;
 
   private append(data: string) {
+    // Sanitize the output to remove UUIDs and clean up display
+    const cleaned = sanitizeOutput(data);
+
     // Split into lines and append
-    const parts = (data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const parts = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     for (const line of parts) {
       if (line.length === 0) continue;
       this.logs.push(line);

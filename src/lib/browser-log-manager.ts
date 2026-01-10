@@ -3,6 +3,8 @@
  * Similar to DevServerManager but for browser-side logs
  */
 
+import { sanitizeOutput } from './output-sanitizer';
+
 export interface BrowserLogEntry {
   timestamp: number;
   level: 'log' | 'warn' | 'error';
@@ -19,8 +21,12 @@ class BrowserLogManagerImpl {
    * Add a log entry to the buffer
    */
   addLog(entry: Omit<BrowserLogEntry, 'timestamp'>) {
+    // Sanitize the message to remove UUIDs and clean up display
+    const sanitizedMessage = sanitizeOutput(entry.message);
+
     const fullEntry: BrowserLogEntry = {
       ...entry,
+      message: sanitizedMessage,
       timestamp: Date.now(),
     };
 

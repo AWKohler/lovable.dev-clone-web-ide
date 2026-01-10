@@ -2,6 +2,7 @@ import { WebContainer } from '@webcontainer/api';
 import { WebContainerManager } from '@/lib/webcontainer';
 import { applyDiff, type DiffResult, type FailedBlock } from './diff';
 import { DevServerManager } from '@/lib/dev-server';
+import { sanitizeForLLM } from '@/lib/output-sanitizer';
 
 export type GrepResult = { filePath: string; lineNumber: number; lineContent: string };
 
@@ -589,7 +590,8 @@ export const WebContainerAgent = {
       if (exitCode === -1) {
         // Timed out; try to stop the process and finish draining
         try { proc.kill(); } catch {}
-        yield `⏱️  Command timed out after 3 minutes and was terminated.\n\nOutput before timeout:\n${combined.trim() || '(no output)'}`;
+        const sanitizedTimeout = combined.trim() ? sanitizeForLLM(combined) : '(no output)';
+        yield `⏱️  Command timed out after 3 minutes and was terminated.\n\nOutput before timeout:\n${sanitizedTimeout}`;
         reading = false;
         try { await reader.cancel(); } catch {}
         await drain;
@@ -606,17 +608,20 @@ export const WebContainerAgent = {
       const hasOutput = combined.trim().length > 0;
       let final = '';
 
+      // Sanitize output for LLM consumption (remove UUIDs, ANSI codes, etc.)
+      const sanitizedOutput = hasOutput ? sanitizeForLLM(combined) : '';
+
       if (exitCode === 0) {
         final = `✅ Command completed successfully (exit code 0)\n\n`;
         if (hasOutput) {
-          final += `Output:\n${combined.trim()}`;
+          final += `Output:\n${sanitizedOutput}`;
         } else {
           final += `(No output - command completed silently)`;
         }
       } else {
         final = `❌ Command failed with exit code ${exitCode}\n\n`;
         if (hasOutput) {
-          final += `Output:\n${combined.trim()}\n\nSuggestion: Check the error output above for details on what went wrong.`;
+          final += `Output:\n${sanitizedOutput}\n\nSuggestion: Check the error output above for details on what went wrong.`;
         } else {
           final += `(No output provided)\n\nSuggestion: The command may not exist or failed immediately.`;
         }
