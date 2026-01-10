@@ -84,6 +84,9 @@ export function Workspace({
   // Prevent concurrent initializations within same render
   const initializingRef = useRef(false);
 
+  // Track which project was successfully initialized to prevent re-initialization loops
+  const initializedProjectIdRef = useRef<string | null>(null);
+
   // Toast for notifications
   const { toast } = useToast();
 
@@ -327,6 +330,12 @@ export function Workspace({
       if (initializingRef.current) {
         return;
       }
+
+      // Prevent re-initialization if already completed successfully for this project
+      if (initializedProjectIdRef.current === projectId) {
+        return;
+      }
+
       initializingRef.current = true;
 
       setHydrating(true);
@@ -383,6 +392,9 @@ export function Workspace({
             await refreshFileTree(container);
             setIsLoading(false);
             setHydrating(false);
+
+            // Mark project as initialized to prevent re-initialization loop
+            initializedProjectIdRef.current = projectId;
 
             // Wait for pending fs.watch events before enabling auto-save
             setTimeout(() => {
@@ -1228,6 +1240,9 @@ export function cn(...inputs: ClassValue[]) {
         setIsLoading(false);
         setHydrating(false);
 
+        // Mark project as initialized to prevent re-initialization loop
+        initializedProjectIdRef.current = projectId;
+
         // Wait for any pending fs.watch events to complete before enabling auto-save
         // This prevents the initial template mount from triggering auto-save
         setTimeout(() => {
@@ -1240,6 +1255,10 @@ export function cn(...inputs: ClassValue[]) {
         console.error("Failed to initialize WebContainer:", error);
         setIsLoading(false);
         setHydrating(false);
+
+        // Mark project as initialized even on error to prevent re-initialization loop
+        initializedProjectIdRef.current = projectId;
+
         setTimeout(() => {
           setInitializationComplete(true);
         }, 1000);
