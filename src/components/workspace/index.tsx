@@ -87,6 +87,9 @@ export function Workspace({
   // Track which project was successfully initialized to prevent re-initialization loops
   const initializedProjectIdRef = useRef<string | null>(null);
 
+  // Store preview subscription cleanup to persist across dependency changes
+  const previewCleanupRef = useRef<(() => void) | undefined>(undefined);
+
   // Toast for notifications
   const { toast } = useToast();
 
@@ -396,13 +399,16 @@ export function Workspace({
             // Mark project as initialized to prevent re-initialization loop
             initializedProjectIdRef.current = projectId;
 
+            // Store preview cleanup in ref to persist across dependency changes
+            previewCleanupRef.current = unsubscribe;
+
             // Wait for pending fs.watch events before enabling auto-save
             setTimeout(() => {
               setInitializationComplete(true);
             }, 1000);
 
-            // Return cleanup function
-            return unsubscribe;
+            // Return empty cleanup (preview cleanup is in ref)
+            return;
           }
 
           // No backup found - mount template (normal for new projects)
@@ -1243,14 +1249,17 @@ export function cn(...inputs: ClassValue[]) {
         // Mark project as initialized to prevent re-initialization loop
         initializedProjectIdRef.current = projectId;
 
+        // Store preview cleanup in ref to persist across dependency changes
+        previewCleanupRef.current = unsubscribe;
+
         // Wait for any pending fs.watch events to complete before enabling auto-save
         // This prevents the initial template mount from triggering auto-save
         setTimeout(() => {
           setInitializationComplete(true);
         }, 1000);
 
-        // Return cleanup function for preview subscription
-        return unsubscribe;
+        // Return empty cleanup (preview cleanup is in ref)
+        return;
       } catch (error) {
         console.error("Failed to initialize WebContainer:", error);
         setIsLoading(false);
@@ -1262,15 +1271,11 @@ export function cn(...inputs: ClassValue[]) {
         setTimeout(() => {
           setInitializationComplete(true);
         }, 1000);
-        return () => {}; // Empty cleanup function
+        return; // No cleanup needed
       }
     }
 
-    let cleanupPreview: (() => void) | undefined;
-
-    initWebContainer().then((cleanup) => {
-      cleanupPreview = cleanup;
-    });
+    initWebContainer();
 
     // Listen for file system changes
     window.addEventListener("webcontainer-fs-change", handleFileSystemChange);
@@ -1283,9 +1288,6 @@ export function cn(...inputs: ClassValue[]) {
         "webcontainer-fs-change",
         handleFileSystemChange,
       );
-      if (cleanupPreview) {
-        cleanupPreview();
-      }
     };
   }, [
     projectId,
@@ -1294,6 +1296,18 @@ export function cn(...inputs: ClassValue[]) {
     handleFileSystemChange,
     runInstall,
   ]);
+
+  // Cleanup preview subscription only when project changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (previewCleanupRef.current) {
+        previewCleanupRef.current();
+        previewCleanupRef.current = undefined;
+      }
+      // Reset initialization state when project changes
+      initializedProjectIdRef.current = null;
+    };
+  }, [projectId]);
 
   // React to preview refresh requests from tools
   useEffect(() => {
