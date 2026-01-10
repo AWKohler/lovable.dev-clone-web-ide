@@ -1347,7 +1347,7 @@ export function cn(...inputs: ClassValue[]) {
         return; // Silently ignore untrusted origins
       }
 
-      // Forward iframe console messages to parent console
+      // Forward iframe console messages to parent console AND capture in BrowserLogManager
       if (event.data?.type === "IFRAME_CONSOLE") {
         const { level, message } = event.data;
         const prefix = "[iframe]";
@@ -1358,16 +1358,27 @@ export function cn(...inputs: ClassValue[]) {
         } else {
           console.log(prefix, message);
         }
+
+        // Capture in BrowserLogManager for agent access
+        const { BrowserLogManager } = await import("@/lib/browser-log-manager");
+        BrowserLogManager.addConsoleLog(level as 'log' | 'warn' | 'error', message);
         return;
       }
 
-      // Forward iframe errors to parent console
+      // Forward iframe errors to parent console AND capture in BrowserLogManager
       if (event.data?.type === "IFRAME_ERROR") {
-        console.error("[iframe error]", event.data.message, event.data.filename ? `at ${event.data.filename}:${event.data.lineno}:${event.data.colno}` : "");
+        const errorMsg = event.data.filename
+          ? `${event.data.message} at ${event.data.filename}:${event.data.lineno}:${event.data.colno}`
+          : event.data.message;
+        console.error("[iframe error]", errorMsg);
+
+        // Capture in BrowserLogManager for agent access
+        const { BrowserLogManager } = await import("@/lib/browser-log-manager");
+        BrowserLogManager.addError(errorMsg);
         return;
       }
 
-      // Handle Vite HMR events
+      // Handle Vite HMR events AND capture in BrowserLogManager
       if (event.data?.type === "VITE_HMR") {
         const { event: hmrEvent, error } = event.data;
         if (hmrEvent === "connected") {
@@ -1385,6 +1396,10 @@ export function cn(...inputs: ClassValue[]) {
         } else if (hmrEvent === "hmrNotAvailable") {
           console.warn("⚠️ [Vite HMR] Not available (import.meta.hot is undefined)");
         }
+
+        // Capture in BrowserLogManager for agent access
+        const { BrowserLogManager } = await import("@/lib/browser-log-manager");
+        BrowserLogManager.addHMREvent(hmrEvent, error);
         return;
       }
 

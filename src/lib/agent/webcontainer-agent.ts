@@ -697,6 +697,38 @@ export const WebContainerAgent = {
     }
   },
 
+  async getBrowserLog(linesBack: number = 200): Promise<{ ok: boolean; message: string; log?: string }> {
+    try {
+      // Import BrowserLogManager dynamically
+      const { BrowserLogManager } = await import('@/lib/browser-log-manager');
+
+      // Get formatted logs (synchronous, no timeout needed)
+      const formattedLog = BrowserLogManager.getLogsFormatted(linesBack);
+
+      // Check if we have logs
+      const stats = BrowserLogManager.getStats();
+      if (stats.total === 0) {
+        return {
+          ok: false,
+          message: `📭 No browser console logs available yet. The preview may not have loaded or generated any console output.\n\nNote: Browser logs include console.log/warn/error calls, runtime errors, and HMR events from the preview iframe.`,
+        };
+      }
+
+      // Add context to the response
+      return {
+        ok: true,
+        message: `📊 Retrieved last ${linesBack} lines of browser console output (${stats.total} total, ${stats.errors} errors, ${stats.warnings} warnings):\n\n` + formattedLog,
+        log: formattedLog,
+      };
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      return {
+        ok: false,
+        message: `❌ Failed to get browser console log: ${errorMsg}\n\nThis might be a temporary error. Try again in a moment.`,
+      };
+    }
+  },
+
   async stopDevServer(): Promise<{ ok: boolean; message: string; alreadyStopped?: boolean }> {
     try {
       // 30 second timeout for stopping server

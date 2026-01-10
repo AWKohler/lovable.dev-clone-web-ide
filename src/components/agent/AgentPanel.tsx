@@ -225,6 +225,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }) : a));
             break;
           }
+          case 'getBrowserLog': {
+            const linesBack = Number((args as { linesBack?: number }).linesBack ?? 200);
+            const out = await WebContainerAgent.getBrowserLog(linesBack);
+            const result = out.ok ? (out.log ?? '') : out.message;
+            await addToolResult({ toolCallId: toolCall.toolCallId, result });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: out.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: result.slice(0, 400),
+            }) : a));
+            break;
+          }
           case 'startDevServer': {
             const res = await WebContainerAgent.startDevServer();
             const msg = res.message;

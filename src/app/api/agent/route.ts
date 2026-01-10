@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       "- **Important**: `applyDiff` does NOT work on empty or non-existent files. Always use `writeFile` to create new files.",
       "- After completing a task:",
       "  1. Ensure dev server is **running** (start if needed).",
-      "  2. Always **check the dev server log for errors**.",
+      "  2. Always **check the dev server log AND browser console log for errors**.",
       "  3. Always **refresh the preview** so the user sees changes.",
       "",
       "---",
@@ -65,14 +65,15 @@ export async function POST(req: Request) {
       "",
       "4. **Verify & conclude**:",
       "   - Start or confirm **dev server is running**.",
-      "   - **Check logs** for warnings/errors.",
+      "   - **Check both dev server logs AND browser console logs** for warnings/errors.",
       "   - **Refresh preview** after completing task.",
       "   - Conclude with a **short summary**, not lengthy explanation.",
       "",
       "---",
       "",
       "## Debugging Rules",
-      "- Always use `getDevServerLog` after tasks.",
+      "- Always use `getDevServerLog` AND `getBrowserLog` after tasks to check for errors in both server and browser.",
+      "- The browser log includes console.log/warn/error calls, runtime errors, and HMR events from the preview iframe.",
       "- For multi-step changes, use log snapshots during process too.",
       "- Only shut down the dev server if the user explicitly asks or for specific debugging scenarios.",
       "",
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
       "## Critical Guardrails",
       "- Never over-anticipate user needs besides design/UX defaults.",
       "- Never forget to refresh preview when you're done.",
-      "- Never skip checking logs before declaring success.",
+      "- Never skip checking BOTH dev server logs AND browser console logs before declaring success.",
       "- Use your full set of tools to work as powerfully as possible.",
       "",
       "---",
@@ -334,6 +335,18 @@ export async function POST(req: Request) {
       getDevServerLog: tool({
         description:
           "Return the dev server log. Pass linesBack to control how many tail lines to return (from bottom).",
+        parameters: z.object({
+          linesBack: z
+            .number()
+            .int()
+            .positive()
+            .default(200)
+            .describe("Number of lines from the end of the log"),
+        }),
+      }),
+      getBrowserLog: tool({
+        description:
+          "Return the browser console log from the preview iframe. This includes console.log/warn/error calls, runtime errors, and HMR events. Pass linesBack to control how many tail lines to return (from bottom).",
         parameters: z.object({
           linesBack: z
             .number()
