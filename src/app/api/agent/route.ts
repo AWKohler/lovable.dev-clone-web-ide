@@ -471,7 +471,6 @@ export async function POST(req: Request) {
       }
       const fireworks = createFireworks({ apiKey });
       const result = await streamText({
-        // @ts-expect-error - Fireworks AI model interface compatibility issue
         model: fireworks("accounts/fireworks/models/minimax-m2p1"),
         system:
           (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
