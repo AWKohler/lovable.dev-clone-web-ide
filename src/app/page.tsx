@@ -20,6 +20,7 @@ export default function Home() {
     | "claude-haiku-4.5"
     | "claude-opus-4.5"
     | "kimi-k2-thinking-turbo"
+    | "fireworks-minimax-m2p1"
   >(
     "gpt-4.1",
   );
@@ -27,6 +28,7 @@ export default function Home() {
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
+  const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
@@ -44,7 +46,8 @@ export default function Home() {
         'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
         'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
         'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-        'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
+        'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
+        'fireworks-minimax-m2p1': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
       } as const;
       const check = keyChecks[model];
       if (check.hasKey === false) {
@@ -70,6 +73,7 @@ export default function Home() {
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
+          setHasFireworksKey(Boolean(data?.hasFireworksKey));
         }
       } catch {}
     })();
@@ -247,7 +251,8 @@ export default function Home() {
                           | "claude-sonnet-4.5"
                           | "claude-haiku-4.5"
                           | "claude-opus-4.5"
-                          | "kimi-k2-thinking-turbo",
+                          | "kimi-k2-thinking-turbo"
+                          | "fireworks-minimax-m2p1",
                       )
                     }
                     title="Select model"
@@ -257,6 +262,7 @@ export default function Home() {
                     <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
                     <option value="claude-opus-4.5">Claude Opus 4.5</option>
                     <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
+                    <option value="fireworks-minimax-m2p1">Fireworks MiniMax M2P1</option>
                   </select>
                 </div>
 
