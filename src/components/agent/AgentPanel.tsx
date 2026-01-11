@@ -40,11 +40,12 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
   const [model, setModel] = useState<
-    'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo'
+    'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p1'
   >('gpt-4.1');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
+  const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const { toast } = useToast();
 
   const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
@@ -377,7 +378,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             proj?.model === 'claude-sonnet-4.5' ||
             proj?.model === 'claude-haiku-4.5' ||
             proj?.model === 'claude-opus-4.5' ||
-            proj?.model === 'kimi-k2-thinking-turbo'
+            proj?.model === 'kimi-k2-thinking-turbo' ||
+            proj?.model === 'fireworks-minimax-m2p1'
           ) {
             setModel(proj.model);
           }
@@ -390,6 +392,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
+          setHasFireworksKey(Boolean(data?.hasFireworksKey));
         }
       } catch {}
     })();
@@ -486,13 +489,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 | 'claude-sonnet-4.5'
                 | 'claude-haiku-4.5'
                 | 'claude-opus-4.5'
-                | 'kimi-k2-thinking-turbo';
+                | 'kimi-k2-thinking-turbo'
+                | 'fireworks-minimax-m2p1';
               const keyChecks = {
                 'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
                 'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
                 'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
                 'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-                'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' }
+                'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
+                'fireworks-minimax-m2p1': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
               } as const;
               const check = keyChecks[next];
               if (check.hasKey === false) {
@@ -519,6 +524,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
             <option value="claude-opus-4.5">Claude Opus 4.5</option>
             <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
+            <option value="fireworks-minimax-m2p1">Fireworks MiniMax M2P1</option>
           </select>
           <Button
           type="button"

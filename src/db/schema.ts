@@ -5,7 +5,7 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   userId: text('user_id').notNull(), // Clerk user id
   platform: text('platform').notNull().default('web'), // 'web' | 'mobile'
-  // Preferred model for this project: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo'
+  // Preferred model for this project: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p1'
   model: text('model').notNull().default('gpt-4.1'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
@@ -77,6 +77,7 @@ export const userSettings = pgTable('user_settings', {
   openaiApiKey: text('openai_api_key'),
   anthropicApiKey: text('anthropic_api_key'),
   moonshotApiKey: text('moonshot_api_key'),
+  fireworksApiKey: text('fireworks_api_key'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({

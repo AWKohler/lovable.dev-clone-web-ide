@@ -1,6 +1,7 @@
 import { streamText, tool, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createFireworks } from "@ai-sdk/fireworks";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { projects, supabaseLinks, userSettings } from "@/db/schema";
@@ -44,6 +45,42 @@ export async function POST(req: Request) {
       "  1. Ensure dev server is **running** (start if needed).",
       "  2. Always **check the dev server log AND browser console log for errors**.",
       "  3. Always **refresh the preview** so the user sees changes.",
+      "",
+      "---",
+      "",
+      "## File Paths (CRITICAL)",
+      "",
+      "**You are working inside a project directory. All file paths are relative to the project root.**",
+      "",
+      "### Correct Path Format",
+      "- Root-relative paths starting with `/`: `/index.html`, `/src/App.tsx`, `/vite.config.ts`",
+      "- Subdirectories: `/src/components/Button.tsx`, `/public/logo.svg`",
+      "- Configuration files at root: `/package.json`, `/tsconfig.json`, `/tailwind.config.js`",
+      "",
+      "### NEVER Use These Paths",
+      "- ❌ Internal WebContainer paths: `/home/projects/xyz/...` or `/home/abc123/...`",
+      "- ❌ Relative paths without leading slash: `src/App.tsx` (use `/src/App.tsx` instead)",
+      "- ❌ Parent directory references: `../` (stay within project)",
+      "",
+      "### Path Examples",
+      "```",
+      "✅ CORRECT:",
+      "  readFile(\"/src/main.tsx\")",
+      "  writeFile(\"/src/components/Header.tsx\", content)",
+      "  applyDiff(\"/vite.config.ts\", diff)",
+      "  listFiles(\"/src\", recursive: true)",
+      "",
+      "❌ WRONG:",
+      "  readFile(\"/home/i74760qjio157cwu31sbl2dm6qvf4x-epd3/src/main.tsx\")",
+      "  writeFile(\"src/components/Header.tsx\", content)  // missing leading /",
+      "  applyDiff(\"/home/.../vite.config.ts\", diff)",
+      "```",
+      "",
+      "### When You See Internal Paths in Errors",
+      "If an error message shows an internal path like `/home/xyz123/src/index.css`:",
+      "1. Extract the project-relative part: `/src/index.css`",
+      "2. Use only that in your next tool call",
+      "3. Never copy the full internal path",
       "",
       "---",
       "",
@@ -247,7 +284,8 @@ export async function POST(req: Request) {
       | "claude-sonnet-4.5"
       | "claude-haiku-4.5"
       | "claude-opus-4.5"
-      | "kimi-k2-thinking-turbo" = "gpt-4.1";
+      | "kimi-k2-thinking-turbo"
+      | "fireworks-minimax-m2p1" = "gpt-4.1";
     if (projectId) {
       const [proj] = await db
         .select()
@@ -267,6 +305,8 @@ export async function POST(req: Request) {
         selectedModel = "claude-opus-4.5";
       } else if (proj.model === "kimi-k2-thinking-turbo") {
         selectedModel = "kimi-k2-thinking-turbo";
+      } else if (proj.model === "fireworks-minimax-m2p1") {
+        selectedModel = "fireworks-minimax-m2p1";
       } else {
         selectedModel = "gpt-4.1";
       }
@@ -282,9 +322,10 @@ export async function POST(req: Request) {
     const tools = {
       listFiles: tool({
         description:
-          "List files and folders. Set recursive=true to walk subdirectories.",
+          "List files and folders. Set recursive=true to walk subdirectories. " +
+          "Use project-relative paths starting with / (e.g. '/' for root, '/src' for src folder).",
         parameters: z.object({
-          path: z.string().describe("Start directory, e.g. '/' or '/src'"),
+          path: z.string().describe("Project-relative path starting with /, e.g. '/' or '/src'"),
           recursive: z.boolean().optional().default(false),
         }),
       }),
@@ -292,27 +333,31 @@ export async function POST(req: Request) {
         description:
           "Write content to a file. Creates the file if it doesn't exist, or overwrites it if it does. " +
           "Use this tool to create new files with content, or to completely replace file contents. " +
-          "For partial edits to existing files, prefer applyDiff instead.",
+          "For partial edits to existing files, prefer applyDiff instead. " +
+          "Use project-relative paths starting with / (e.g. '/src/App.tsx').",
         parameters: z.object({
           path: z
             .string()
-            .describe("File path to write, e.g. '/src/new-file.ts'"),
+            .describe("Project-relative file path starting with /, e.g. '/src/components/Button.tsx'"),
           content: z
             .string()
             .describe("The content to write to the file"),
         }),
       }),
       readFile: tool({
-        description: "Read a single file as UTF-8.",
-        parameters: z.object({ path: z.string() }),
+        description: "Read a single file as UTF-8. Use project-relative paths starting with / (e.g. '/src/main.tsx').",
+        parameters: z.object({
+          path: z.string().describe("Project-relative file path starting with /, e.g. '/src/App.tsx'")
+        }),
       }),
       applyDiff: tool({
         description:
           "Apply SEARCH/REPLACE blocks to a file using fuzzy matching (85% similarity). " +
           "The system uses Levenshtein distance matching and handles whitespace/unicode normalization. " +
-          "If a block fails, returns detailed error with best match found and similarity percentage.",
+          "If a block fails, returns detailed error with best match found and similarity percentage. " +
+          "Use project-relative paths starting with / (e.g. '/vite.config.ts').",
         parameters: z.object({
-          path: z.string().describe("Target file path"),
+          path: z.string().describe("Project-relative file path starting with /, e.g. '/src/App.tsx'"),
           diff: z
             .string()
             .describe(
@@ -322,8 +367,12 @@ export async function POST(req: Request) {
       }),
       searchFiles: tool({
         description:
-          "Recursive text search starting at path. query may be regex.",
-        parameters: z.object({ path: z.string(), query: z.string() }),
+          "Recursive text search starting at path. query may be regex. " +
+          "Use project-relative paths starting with / (e.g. '/src').",
+        parameters: z.object({
+          path: z.string().describe("Project-relative path starting with /, e.g. '/' or '/src'"),
+          query: z.string().describe("Search pattern (can be regex)")
+        }),
       }),
       executeCommand: tool({
         description: "Run a command in the WebContainer (e.g. pnpm, node).",
@@ -405,6 +454,25 @@ export async function POST(req: Request) {
       });
       const result = await streamText({
         model: moonshot("kimi-k2-thinking-turbo"),
+        system:
+          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
+          supabaseNote,
+        messages: messages as CoreMessage[],
+        tools,
+      });
+      return result.toDataStreamResponse();
+    } else if (selectedModel === "fireworks-minimax-m2p1") {
+      const apiKey = settings?.fireworksApiKey;
+      if (!apiKey) {
+        return new Response(
+          JSON.stringify({ error: "Missing Fireworks API key" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const fireworks = createFireworks({ apiKey });
+      const result = await streamText({
+        // @ts-expect-error - Fireworks AI model interface compatibility issue
+        model: fireworks("accounts/fireworks/models/minimax-m2p1"),
         system:
           (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
           supabaseNote,

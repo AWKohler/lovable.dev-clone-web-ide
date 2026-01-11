@@ -56,6 +56,38 @@ function getErrorMessage(error: unknown): string {
 }
 
 /**
+ * Normalize file paths to project-relative format
+ * Strips WebContainer internal paths and ensures paths start with /
+ *
+ * Examples:
+ *   /home/xyz123/src/App.tsx -> /src/App.tsx
+ *   src/App.tsx -> /src/App.tsx
+ *   /src/App.tsx -> /src/App.tsx (unchanged)
+ */
+function normalizePath(path: string): string {
+  if (!path || typeof path !== 'string') return path;
+
+  let normalized = path.trim();
+
+  // Strip WebContainer internal paths like /home/projectid/...
+  // Match pattern: /home/[alphanumeric-_]/...
+  const internalPathMatch = normalized.match(/^\/home\/[a-z0-9_-]+\/(.*)/i);
+  if (internalPathMatch && internalPathMatch[1]) {
+    normalized = '/' + internalPathMatch[1];
+  }
+
+  // Ensure path starts with / (convert relative to absolute)
+  if (!normalized.startsWith('/')) {
+    normalized = '/' + normalized;
+  }
+
+  // Remove duplicate slashes
+  normalized = normalized.replace(/\/+/g, '/');
+
+  return normalized;
+}
+
+/**
  * Build a comprehensive error message from a DiffResult.
  * This message is designed to help the LLM understand what went wrong
  * and how to fix it.
@@ -122,6 +154,9 @@ export const WebContainerAgent = {
 
   async listFiles(path: string, recursive = false): Promise<string> {
     try {
+      // Normalize the path to handle any incorrect formatting
+      path = normalizePath(path);
+
       const container = await this.getContainer();
       const lines: string[] = [];
       let fileCount = 0;
@@ -165,6 +200,9 @@ export const WebContainerAgent = {
 
   async readFile(path: string): Promise<string> {
     try {
+      // Normalize the path to handle any incorrect formatting
+      path = normalizePath(path);
+
       const container = await this.getContainer();
 
       // Generous 30 second timeout for large files
@@ -203,9 +241,10 @@ export const WebContainerAgent = {
         };
       }
 
-      // Normalize to absolute path, collapse duplicate slashes, remove trailing slash
-      if (!path.startsWith('/')) path = '/' + path;
-      path = path.replace(/\/+/g, '/');
+      // Normalize the path to handle any incorrect formatting
+      path = normalizePath(path);
+
+      // Remove trailing slash if present (except for root)
       if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
       if (path === '/' || path.endsWith('/')) {
         return {
@@ -317,6 +356,9 @@ export const WebContainerAgent = {
 
   async applyDiff(filePath: string, diff: string): Promise<ApplyDiffResult> {
     try {
+      // Normalize the path to handle any incorrect formatting
+      filePath = normalizePath(filePath);
+
       const container = await this.getContainer();
 
       // Read existing content; if file doesn't exist or is empty, reject and suggest writeFile
@@ -441,6 +483,9 @@ export const WebContainerAgent = {
 
   async *searchFiles(startPath: string, query: string): AsyncGenerator<GrepResult | { error: string; progress: string }> {
     try {
+      // Normalize the path to handle any incorrect formatting
+      startPath = normalizePath(startPath);
+
       const container = await this.getContainer();
       const queue: string[] = [startPath];
       let regex: RegExp;
