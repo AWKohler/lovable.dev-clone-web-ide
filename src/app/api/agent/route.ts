@@ -331,9 +331,10 @@ export async function POST(req: Request) {
       }),
       writeFile: tool({
         description:
-          "Write content to a file. Creates the file if it doesn't exist, or overwrites it if it does. " +
-          "Use this tool to create new files with content, or to completely replace file contents. " +
-          "For partial edits to existing files, prefer applyDiff instead. " +
+          "Write content to a file. This tool COMPLETELY REPLACES the file's contents with the new content you provide. " +
+          "Creates the file if it doesn't exist, or COMPLETELY OVERWRITES it if it does (replacing all existing content). " +
+          "Use this tool to: (1) create new files, (2) completely rewrite/replace a file's entire contents. " +
+          "For small/partial edits to existing files, use applyDiff instead. " +
           "Use project-relative paths starting with / (e.g. '/src/App.tsx').",
         parameters: z.object({
           path: z
