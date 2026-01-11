@@ -265,9 +265,9 @@ export const WebContainerAgent = {
           suggestion: 'Choose a different name or delete the directory first',
         };
       } catch (err) {
-        // Expected - directory doesn't exist, continue
+        // Expected - directory doesn't exist OR path is a file, continue
         const errMsg = getErrorMessage(err);
-        if (!errMsg.includes('ENOENT') && !errMsg.includes('timed out')) {
+        if (!errMsg.includes('ENOENT') && !errMsg.includes('ENOTDIR') && !errMsg.includes('timed out')) {
           throw err; // Unexpected error
         }
       }
@@ -279,6 +279,9 @@ export const WebContainerAgent = {
       } catch (err) {
         const msg = getErrorMessage(err);
         if (msg.includes('ENOENT')) {
+          isNewFile = true;
+        } else if (msg.includes('ENOTDIR')) {
+          // Path contains a file component where a directory is expected
           isNewFile = true;
         } else if (msg.includes('timed out')) {
           // File might be huge, treat as existing
@@ -303,11 +306,14 @@ export const WebContainerAgent = {
           const errMsg = getErrorMessage(err);
           // Only ignore EEXIST errors
           if (!errMsg.includes('EEXIST') && !errMsg.includes('already exists')) {
+            const suggestion = errMsg.includes('ENOTDIR')
+              ? 'A file exists where a directory is expected in the path. Check the path structure.'
+              : 'Check if the parent path is valid and you have permissions';
             return {
               ok: false,
               message: `Failed to create parent directory: ${errMsg}`,
               path,
-              suggestion: 'Check if the parent path is valid and you have permissions',
+              suggestion,
             };
           }
         }
