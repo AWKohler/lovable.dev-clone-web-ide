@@ -6,6 +6,7 @@ import { WebContainerManager } from "@/lib/webcontainer";
 import { DevServerManager } from "@/lib/dev-server";
 import { getPreviewStore, PreviewInfo } from "@/lib/preview-store";
 import { useToast } from "@/components/ui/toast";
+import JSZip from "jszip";
 import { FileTree } from "./file-tree";
 import { FileSearch } from "./file-search";
 import { AgentPanel } from "@/components/agent/AgentPanel";
@@ -26,6 +27,7 @@ import {
   Tablet,
   Smartphone,
   Github,
+  Download,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
 import { SupabasePicker } from "@/components/supabase/SupabasePicker";
@@ -324,6 +326,83 @@ export function Workspace({
       await startDevServer(webcontainer);
     }
   }, [webcontainer, isDevServerRunning, startDevServer, stopDevServer]);
+
+  const handleDownloadProject = useCallback(async () => {
+    if (!webcontainer) return;
+
+    // Show loading toast
+    toast({
+      title: "Creating zip file...",
+      description: "Please wait while we prepare your project files",
+    });
+
+    try {
+      const zip = new JSZip();
+
+      // Folders to exclude from the zip
+      const excludedFolders = ['node_modules', '.git', 'dist', 'build', '.next'];
+
+      // Recursively add files to zip
+      async function addFilesToZip(path: string, zipFolder: JSZip) {
+        try {
+          const entries = await webcontainer.fs.readdir(path, {
+            withFileTypes: true,
+          });
+
+          for (const entry of entries) {
+            const fullPath = path === "/" ? `/${entry.name}` : `${path}/${entry.name}`;
+            const relativePath = fullPath.substring(1); // Remove leading slash
+
+            // Skip excluded folders
+            if (excludedFolders.includes(entry.name)) {
+              continue;
+            }
+
+            if (entry.isDirectory()) {
+              const newFolder = zipFolder.folder(entry.name);
+              if (newFolder) {
+                await addFilesToZip(fullPath, newFolder);
+              }
+            } else {
+              // Read file content
+              const content = await webcontainer.fs.readFile(fullPath, "utf8");
+              zipFolder.file(entry.name, content);
+            }
+          }
+        } catch (error) {
+          console.error(`Error reading directory ${path}:`, error);
+        }
+      }
+
+      // Start adding files from root
+      await addFilesToZip("/", zip);
+
+      // Generate zip file
+      const blob = await zip.generateAsync({ type: "blob" });
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${projectId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Show success toast
+      toast({
+        title: "Download complete",
+        description: "Project files have been downloaded successfully",
+      });
+    } catch (error) {
+      console.error("Failed to download project:", error);
+      toast({
+        title: "Download failed",
+        description: "An error occurred while creating the zip file",
+      });
+    }
+  }, [webcontainer, projectId, toast]);
 
   // REMOVED: Manual snapshot test button (no longer needed)
 
@@ -1771,6 +1850,17 @@ export function cn(...inputs: ClassValue[]) {
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
             <SupabasePicker projectId={projectId} />
+            {currentView === "code" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-8 p-0 aspect-square"
+                onClick={handleDownloadProject}
+                title="Download project"
+              >
+                <Download size={16} />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
