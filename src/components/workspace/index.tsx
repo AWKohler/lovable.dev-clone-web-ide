@@ -328,7 +328,8 @@ export function Workspace({
   }, [webcontainer, isDevServerRunning, startDevServer, stopDevServer]);
 
   const handleDownloadProject = useCallback(async () => {
-    if (!webcontainer) return;
+    const container = webcontainer;
+    if (!container) return;
 
     // Show loading toast
     toast({
@@ -343,9 +344,9 @@ export function Workspace({
       const excludedFolders = ['node_modules', '.git', 'dist', 'build', '.next'];
 
       // Recursively add files to zip
-      async function addFilesToZip(path: string, zipFolder: JSZip) {
+      async function addFilesToZip(container: WebContainer, path: string, zipFolder: JSZip) {
         try {
-          const entries = await webcontainer.fs.readdir(path, {
+          const entries = await container.fs.readdir(path, {
             withFileTypes: true,
           });
 
@@ -361,11 +362,11 @@ export function Workspace({
             if (entry.isDirectory()) {
               const newFolder = zipFolder.folder(entry.name);
               if (newFolder) {
-                await addFilesToZip(fullPath, newFolder);
+                await addFilesToZip(container, fullPath, newFolder);
               }
             } else {
               // Read file content
-              const content = await webcontainer.fs.readFile(fullPath, "utf8");
+              const content = await container.fs.readFile(fullPath, "utf8");
               zipFolder.file(entry.name, content);
             }
           }
@@ -375,7 +376,7 @@ export function Workspace({
       }
 
       // Start adding files from root
-      await addFilesToZip("/", zip);
+      await addFilesToZip(container, "/", zip);
 
       // Generate zip file
       const blob = await zip.generateAsync({ type: "blob" });
