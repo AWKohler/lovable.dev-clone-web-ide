@@ -106,7 +106,10 @@ export function Workspace({
         );
         if (res.ok) {
           const proj = await res.json();
-          if (!initialPlatform && (proj?.platform === "mobile" || proj?.platform === "web")) {
+          if (
+            !initialPlatform &&
+            (proj?.platform === "mobile" || proj?.platform === "web")
+          ) {
             setPlatform(proj.platform);
           }
           if (proj?.htmlSnapshotUrl) {
@@ -340,17 +343,28 @@ export function Workspace({
       const zip = new JSZip();
 
       // Folders to exclude from the zip
-      const excludedFolders = ['node_modules', '.git', 'dist', 'build', '.next'];
+      const excludedFolders = [
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        ".next",
+      ];
 
       // Recursively add files to zip
-      async function addFilesToZip(container: WebContainer, path: string, zipFolder: JSZip) {
+      async function addFilesToZip(
+        container: WebContainer,
+        path: string,
+        zipFolder: JSZip,
+      ) {
         try {
           const entries = await container.fs.readdir(path, {
             withFileTypes: true,
           });
 
           for (const entry of entries) {
-            const fullPath = path === "/" ? `/${entry.name}` : `${path}/${entry.name}`;
+            const fullPath =
+              path === "/" ? `/${entry.name}` : `${path}/${entry.name}`;
             const relativePath = fullPath.substring(1); // Remove leading slash
 
             // Skip excluded folders
@@ -1439,7 +1453,10 @@ export function cn(...inputs: ClassValue[]) {
 
         // Capture in BrowserLogManager for agent access
         const { BrowserLogManager } = await import("@/lib/browser-log-manager");
-        BrowserLogManager.addConsoleLog(level as 'log' | 'warn' | 'error', message);
+        BrowserLogManager.addConsoleLog(
+          level as "log" | "warn" | "error",
+          message,
+        );
         return;
       }
 
@@ -1472,7 +1489,9 @@ export function cn(...inputs: ClassValue[]) {
         } else if (hmrEvent === "hmrModuleLoaded") {
           console.log("✅ [Vite HMR] Module loaded - HMR is available");
         } else if (hmrEvent === "hmrNotAvailable") {
-          console.warn("⚠️ [Vite HMR] Not available (import.meta.hot is undefined)");
+          console.warn(
+            "⚠️ [Vite HMR] Not available (import.meta.hot is undefined)",
+          );
         }
 
         // Capture in BrowserLogManager for agent access
@@ -1677,9 +1696,10 @@ export function cn(...inputs: ClassValue[]) {
               [
                 {
                   value: "preview",
-                  text: `Preview${
-                    previews.length > 0 ? ` (${previews.length})` : ""
-                  }`,
+                  text: `Preview`,
+                  // text: `Preview${
+                  //   previews.length > 0 ? ` (${previews.length})` : ""
+                  // }`,
                 },
                 { value: "code", text: "Code" },
               ] as TabOption<WorkspaceView>[]
