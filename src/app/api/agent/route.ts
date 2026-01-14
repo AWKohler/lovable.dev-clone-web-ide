@@ -4,7 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createFireworks } from "@ai-sdk/fireworks";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { projects, supabaseLinks, userSettings } from "@/db/schema";
+import { projects, userSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 
@@ -252,31 +252,7 @@ export async function POST(req: Request) {
       "If applyDiff fails because the file is empty or doesn't exist, use `writeFile` instead.",
     ].join("\n");
 
-    // If this request is tied to a project, detect linked Supabase
     const db = getDb();
-    let supabaseNote = "";
-    try {
-      if (projectId) {
-        const links = await db
-          .select()
-          .from(supabaseLinks)
-          .where(eq(supabaseLinks.projectId, projectId));
-        const link = links[0];
-        if (link) {
-          supabaseNote = [
-            "",
-            "Supabase is connected to this project.",
-            `- URL: ${link.supabaseProjectUrl}`,
-            "- Features: database, auth, storage, edge functions available.",
-            "- Use supabase-js on server routes or server actions with the anon key.",
-            "- Inside WebContainer, you may install the CLI if needed (e.g., pnpm dlx supabase --help).",
-            "- Initialize any required config (e.g., supabase/config.toml) before running CLI commands.",
-          ].join("\n");
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to read Supabase link for agent prompt:", e);
-    }
 
     // Determine selected model for project and ensure ownership
     let selectedModel:
@@ -435,8 +411,7 @@ export async function POST(req: Request) {
       const result = await streamText({
         model: openai("gpt-4.1"),
         system:
-          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
-          supabaseNote,
+          platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
         tools,
       });
@@ -456,8 +431,7 @@ export async function POST(req: Request) {
       const result = await streamText({
         model: moonshot("kimi-k2-thinking-turbo"),
         system:
-          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
-          supabaseNote,
+          platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
         tools,
       });
@@ -474,8 +448,7 @@ export async function POST(req: Request) {
       const result = await streamText({
         model: fireworks("accounts/fireworks/models/minimax-m2p1"),
         system:
-          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
-          supabaseNote,
+          platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
         tools,
       });
@@ -500,8 +473,7 @@ export async function POST(req: Request) {
       const result = await streamText({
         model: anthropic(anthropicModelId),
         system:
-          (platform === "mobile" ? systemPromptMobile : systemPromptWeb) +
-          supabaseNote,
+          platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
         tools,
       });

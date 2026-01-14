@@ -18,7 +18,6 @@ export async function GET(request: Request) {
     modelParam === 'fireworks-minimax-m2p1' ? 'fireworks-minimax-m2p1' :
     'gpt-4.1'
   ) as 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p1';
-  const supabaseRef = url.searchParams.get('supabaseRef');
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });
@@ -31,22 +30,6 @@ export async function GET(request: Request) {
       .insert(projects)
       .values({ name, userId, platform, model })
       .returning();
-
-    // Optionally link Supabase project if provided and user has a Supabase session
-    if (supabaseRef) {
-      try {
-        await fetch(`${url.origin}/api/supabase/connect-project`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Cookie: request.headers.get('cookie') || '',
-          },
-          body: JSON.stringify({ projectId: project.id, projectRef: supabaseRef }),
-        });
-      } catch (e) {
-        console.warn('Failed to link Supabase during start:', e);
-      }
-    }
 
     // Redirect to workspace and pass starter prompt for auto-run
     const workspaceUrl = new URL(`${url.origin}/workspace/${project.id}`);

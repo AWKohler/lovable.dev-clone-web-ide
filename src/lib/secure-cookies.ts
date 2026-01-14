@@ -40,10 +40,3 @@ export async function decryptCookie<T = unknown>(value: string | undefined | nul
     return null;
   }
 }
-
-export type SupabaseSession = {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number; // epoch ms
-};
-

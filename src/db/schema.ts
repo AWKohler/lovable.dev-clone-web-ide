@@ -50,26 +50,6 @@ export type NewChatSession = typeof chatSessions.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
 
-// Supabase linkage between a platform project and a Supabase project
-export const supabaseLinks = pgTable('supabase_links', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull(),
-  organizationId: text('organization_id'),
-  organizationName: text('organization_name'),
-  supabaseProjectRef: text('supabase_project_ref').notNull(),
-  supabaseProjectUrl: text('supabase_project_url').notNull(),
-  // Note: store anon key server-side only. In production, encrypt-at-rest.
-  supabaseAnonKey: text('supabase_anon_key'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (t) => ({
-  linkPerProjectUnique: uniqueIndex('supabase_links_project_unique').on(t.projectId),
-}));
-
-export type SupabaseLink = typeof supabaseLinks.$inferSelect;
-export type NewSupabaseLink = typeof supabaseLinks.$inferInsert;
-
 // Per-user API key storage (BYOK)
 export const userSettings = pgTable('user_settings', {
   id: uuid('id').primaryKey().defaultRandom(),

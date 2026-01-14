@@ -29,7 +29,6 @@ async function run() {
 
     console.log('Dropping existing tables (if any)...');
     // Drop in dependency order where possible
-    await sql`drop table if exists supabase_links cascade;`;
     await sql`drop table if exists chat_messages cascade;`;
     await sql`drop table if exists chat_sessions cascade;`;
     await sql`drop table if exists projects cascade;`;
@@ -60,21 +59,6 @@ async function run() {
       created_at timestamp default now() not null
     );`;
     await sql`create unique index chat_messages_session_message_unique on chat_messages(session_id, message_id);`;
-
-    // Supabase links table (nullable anon key for environments without management token)
-    await sql`create table supabase_links (
-      id uuid primary key default gen_random_uuid(),
-      project_id uuid not null references projects(id) on delete cascade,
-      user_id text not null,
-      organization_id text,
-      organization_name text,
-      supabase_project_ref text not null,
-      supabase_project_url text not null,
-      supabase_anon_key text,
-      created_at timestamp default now() not null,
-      updated_at timestamp default now() not null
-    );`;
-    await sql`create unique index supabase_links_project_unique on supabase_links(project_id);`;
 
     console.log('✅ Database reset complete.');
   } catch (err) {

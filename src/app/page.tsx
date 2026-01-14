@@ -5,15 +5,12 @@ import { useRouter } from "next/navigation";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { ArrowUp, Heart, Plus, Smartphone, Laptop, Cog } from "lucide-react";
-import { SupabasePicker } from "@/components/supabase/SupabasePicker";
 import { useToast } from "@/components/ui/toast";
-import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
-  const [supabaseRef, setSupabaseRef] = useState<string | null>(null);
   const [model, setModel] = useState<
     | "gpt-4.1"
     | "claude-sonnet-4.5"
@@ -38,7 +35,6 @@ export default function Home() {
     params.set("visibility", "public");
     params.set("platform", platform);
     params.set("model", model);
-    if (supabaseRef) params.set("supabaseRef", supabaseRef);
     const target = `/start?${params.toString()}`;
     if (authed) {
       const keyChecks = {
@@ -235,10 +231,6 @@ export default function Home() {
                       {platform === "web" ? "Web" : "Mobile App (Experimental)"}
                     </span>
                   </button>
-                  {/* Supabase connect picker */}
-                  <div className="pointer-events-auto text-[var(--sand-text)]">
-                    <SupabasePicker onSelected={(ref) => setSupabaseRef(ref)} />
-                  </div>
 
                   {/* Model Selector */}
                   <select

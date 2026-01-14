@@ -30,7 +30,6 @@ import {
   Download,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
-import { SupabasePicker } from "@/components/supabase/SupabasePicker";
 import { cn } from "@/lib/utils";
 import "@/lib/debug-storage"; // Make debug utilities available in console
 
@@ -1850,7 +1849,6 @@ export function cn(...inputs: ClassValue[]) {
               afterSignOutUrl="/"
               appearance={{ elements: { userButtonAvatarBox: "w-8 h-8" } }}
             />
-            <SupabasePicker projectId={projectId} />
             {currentView === "code" && (
               <Button
                 variant="outline"
