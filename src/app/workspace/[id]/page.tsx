@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import Link from 'next/link';
 import { Workspace } from '@/components/workspace';
 
 type WorkspacePageProps = {
@@ -32,18 +33,18 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             signed in with the correct account.
           </p>
           <div className="flex items-center justify-center gap-2">
-            <a
+            <Link
               href="/projects"
               className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 transition"
             >
               Go to my projects
-            </a>
-            <a
+            </Link>
+            <Link
               href="/"
               className="inline-flex items-center rounded-xl border border-border bg-elevated px-4 py-2 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
             >
               Back home
-            </a>
+            </Link>
           </div>
         </div>
       </div>
