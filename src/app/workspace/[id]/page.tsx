@@ -9,13 +9,14 @@ export default async function WorkspacePage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: Record<string, string | string[] | undefined>;
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { userId, redirectToSignIn } = await auth();
-  const projectId = params.id;
-  const initialPrompt = typeof searchParams.prompt === 'string' ? searchParams.prompt : undefined;
-  const platform = typeof searchParams.platform === 'string' ? (searchParams.platform as 'web' | 'mobile') : undefined;
+  const { id: projectId } = await params;
+  const searchParamsResolved = searchParams ? await searchParams : {};
+  const initialPrompt = typeof searchParamsResolved.prompt === 'string' ? searchParamsResolved.prompt : undefined;
+  const platform = typeof searchParamsResolved.platform === 'string' ? (searchParamsResolved.platform as 'web' | 'mobile') : undefined;
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: `/workspace/${projectId}` });
