@@ -5,12 +5,13 @@ import { eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { Workspace } from '@/components/workspace';
 
-type WorkspacePageProps = {
+export default async function WorkspacePage({
+  params,
+  searchParams,
+}: {
   params: { id: string };
-  searchParams: Record<string, string | string[] | undefined>;
-};
-
-export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const { userId, redirectToSignIn } = await auth();
   const projectId = params.id;
   const initialPrompt = typeof searchParams.prompt === 'string' ? searchParams.prompt : undefined;
