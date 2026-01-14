@@ -88,8 +88,13 @@ export default function Home() {
     params.set("name", defaultName);
     const target = `/start?${params.toString()}`;
     if (authed) {
-      if (!ensureModelKeyPresent()) return;
-      router.push(target);
+      setPendingParams(params);
+      setProjectName(defaultName);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(PENDING_PARAMS_KEY, params.toString());
+        localStorage.setItem(PENDING_NAME_KEY, defaultName);
+      }
+      setShowNameDialog(true);
     } else {
       setPendingParams(params);
       setProjectName(defaultName);
