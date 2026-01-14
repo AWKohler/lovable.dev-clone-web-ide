@@ -1,0 +1,11 @@
+{
+  "name": "convex-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "unzipper": "^0.12.3"
+  }
+}
