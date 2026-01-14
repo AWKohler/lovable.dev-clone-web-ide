@@ -171,11 +171,7 @@ export async function captureIframeScreenshot(
  * This uses Puppeteer on the server to screenshot the WebContainer preview.
  */
 export async function captureProjectSnapshot(
-  previewUrl: string,
-  options: {
-    width?: number;
-    height?: number;
-  } = {}
+  previewUrl: string
 ): Promise<SnapshotResult> {
   console.log('📸 Requesting server-side screenshot for:', previewUrl);
 
