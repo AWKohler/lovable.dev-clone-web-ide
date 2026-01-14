@@ -172,6 +172,10 @@ export async function captureIframeScreenshot(
  */
 export async function captureProjectSnapshot(
   previewUrl: string,
+  options: {
+    width?: number;
+    height?: number;
+  } = {}
 ): Promise<SnapshotResult> {
   console.log('📸 Requesting server-side screenshot for:', previewUrl);
 
