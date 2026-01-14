@@ -39,6 +39,14 @@ export default function Home() {
   );
   const PENDING_PARAMS_KEY = "huggable_pending_start_params";
   const PENDING_NAME_KEY = "huggable_pending_project_name";
+  const allowedModels = new Set([
+    "gpt-4.1",
+    "claude-sonnet-4.5",
+    "claude-haiku-4.5",
+    "claude-opus-4.5",
+    "kimi-k2-thinking-turbo",
+    "fireworks-minimax-m2p1",
+  ]);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
@@ -156,6 +164,15 @@ export default function Home() {
       const storedName = localStorage.getItem(PENDING_NAME_KEY);
       if (storedParams) {
         setPendingParams(new URLSearchParams(storedParams));
+        const storedParamsObj = new URLSearchParams(storedParams);
+        const storedModel = storedParamsObj.get("model");
+        const storedPlatform = storedParamsObj.get("platform");
+        if (storedModel && allowedModels.has(storedModel)) {
+          setModel(storedModel as typeof model);
+        }
+        if (storedPlatform === "mobile" || storedPlatform === "web") {
+          setPlatform(storedPlatform);
+        }
         if (storedName) setProjectName(storedName);
       }
     }
