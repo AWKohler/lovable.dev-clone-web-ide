@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SignedIn, SignedOut, SignIn, SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { ArrowUp, Heart, Plus, Smartphone, Laptop, Cog } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -410,35 +410,24 @@ export default function Home() {
 
       {showAuthDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="relative w-full max-w-2xl">
-            <button
-              aria-label="Close sign in"
-              className="absolute -top-10 right-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-neutral-700 shadow-sm backdrop-blur transition hover:bg-white"
-              onClick={closeAuthDialog}
-            >
-              ✕
-            </button>
-            <SignIn
-              appearance={{
-                variables: { borderRadius: '16px', colorBackground: '#ffffff' },
-                elements: {
-                  rootBox: 'w-full',
-                  card: 'w-full max-w-xl shadow-2xl border border-border',
-                  formButtonPrimary: 'bg-black text-white hover:bg-black/90 rounded-xl text-base py-3',
-                  socialButtonsBlockButton: 'rounded-xl border border-border text-sm font-medium',
-                  socialButtonsBlockButtonText: 'text-sm font-medium',
-                  headerTitle: 'text-center text-2xl font-semibold',
-                  headerSubtitle: 'text-center text-neutral-600',
-                  footerAction: 'hidden',
-                },
-                layout: {
-                  socialButtonsPlacement: 'top',
-                  socialButtonsVariant: 'blockButton',
-                },
-              }}
-              afterSignInUrl={typeof window !== "undefined" ? window.location.href : "/"}
-              redirectUrl={typeof window !== "undefined" ? window.location.href : "/"}
-            />
+          <div className="w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-semibold text-neutral-900">Sign in to start building</h2>
+            <p className="mt-2 text-sm text-neutral-600">
+              Sign in or sign up to create your project workspace. You&apos;ll be able to name it on the next step.
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <SignInButton mode="modal">
+                <button className="inline-flex flex-1 items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow hover:opacity-90 transition">
+                  Sign in / Sign up
+                </button>
+              </SignInButton>
+              <button
+                onClick={closeAuthDialog}
+                className="inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
