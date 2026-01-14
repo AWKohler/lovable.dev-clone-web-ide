@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { ArrowUp, Heart, Plus, Smartphone, Laptop, Cog } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 export default function Home() {
   const router = useRouter();
+  const { isSignedIn } = useUser();
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
   const [model, setModel] = useState<
@@ -26,8 +27,32 @@ export default function Home() {
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [pendingParams, setPendingParams] = useState<URLSearchParams | null>(null);
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
+
+  const ensureModelKeyPresent = () => {
+    const keyChecks = {
+      'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
+      'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+      'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+      'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+      'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
+      'fireworks-minimax-m2p1': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
+    } as const;
+    const check = keyChecks[model];
+    if (check.hasKey === false) {
+      toast({
+        title: "Missing API key",
+        description: `Please add your ${check.provider} API key in Settings.`,
+      });
+      return false;
+    }
+    return true;
+  };
 
   const start = (authed: boolean) => {
     const params = new URLSearchParams();
@@ -35,32 +60,52 @@ export default function Home() {
     params.set("visibility", "public");
     params.set("platform", platform);
     params.set("model", model);
+    const defaultName = prompt.trim()
+      ? prompt.trim().slice(0, 48)
+      : "New Project";
+    params.set("name", defaultName);
     const target = `/start?${params.toString()}`;
     if (authed) {
-      const keyChecks = {
-        'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
-        'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-        'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-        'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-        'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
-        'fireworks-minimax-m2p1': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
-      } as const;
-      const check = keyChecks[model];
-      if (check.hasKey === false) {
-        toast({
-          title: "Missing API key",
-          description: `Please add your ${check.provider} API key in Settings.`,
-        });
-        return;
-      }
+      if (!ensureModelKeyPresent()) return;
       router.push(target);
     } else {
-      const redirect = encodeURIComponent(target);
-      router.push(`/sign-in?redirect_url=${redirect}`);
+      setPendingParams(params);
+      setProjectName(defaultName);
+      setShowAuthDialog(true);
     }
   };
 
+  const handleCreateProject = () => {
+    if (!pendingParams) return;
+    if (!ensureModelKeyPresent()) return;
+    const params = new URLSearchParams(pendingParams);
+    const chosenName = projectName.trim()
+      ? projectName.trim().slice(0, 48)
+      : "New Project";
+    params.set("name", chosenName);
+    setShowNameDialog(false);
+    setPendingParams(null);
+    router.push(`/start?${params.toString()}`);
+  };
+
+  const closeAuthDialog = () => {
+    setShowAuthDialog(false);
+    setPendingParams(null);
+  };
+
+  const closeNameDialog = () => {
+    setShowNameDialog(false);
+    setPendingParams(null);
+  };
+
   useEffect(() => {
+    if (!isSignedIn) {
+      setHasOpenAIKey(null);
+      setHasAnthropicKey(null);
+      setHasMoonshotKey(null);
+      setHasFireworksKey(null);
+      return;
+    }
     (async () => {
       try {
         const res = await fetch("/api/user-settings");
@@ -73,10 +118,18 @@ export default function Home() {
         }
       } catch {}
     })();
-  }, []);
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (isSignedIn && pendingParams) {
+      setShowAuthDialog(false);
+      setShowNameDialog(true);
+    }
+  }, [isSignedIn, pendingParams]);
 
   return (
-    <div className="antialiased text-[var(--sand-text)] bg-elevated min-h-screen">
+    <>
+      <div className="antialiased text-[var(--sand-text)] bg-elevated min-h-screen">
       {/* Background gradients */}
       <div className="relative isolate overflow-hidden">
         <div className="pointer-events-none absolute inset-0 -z-10">
@@ -353,6 +406,67 @@ export default function Home() {
           </div>
         </footer>
       </div>
-    </div>
+      </div>
+
+      {showAuthDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-semibold text-neutral-900">Sign in to start building</h2>
+            <p className="mt-2 text-sm text-neutral-600">
+              Sign in or sign up to create your project workspace. You&apos;ll be able to name it on the next step.
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <SignInButton mode="modal">
+                <button className="inline-flex flex-1 items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow hover:opacity-90 transition">
+                  Sign in / Sign up
+                </button>
+              </SignInButton>
+              <button
+                onClick={closeAuthDialog}
+                className="inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNameDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-semibold text-neutral-900">Name your project</h2>
+            <p className="mt-2 text-sm text-neutral-600">
+              Give your project a short name so it&apos;s easy to find later.
+            </p>
+            <div className="mt-4">
+              <input
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateProject();
+                }}
+                placeholder="My new project"
+                className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-neutral-900 shadow-sm outline-none focus:ring-2 focus:ring-black/10"
+              />
+            </div>
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleCreateProject}
+                className="inline-flex flex-1 items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow hover:opacity-90 transition"
+              >
+                Continue to workspace
+              </button>
+              <button
+                onClick={closeNameDialog}
+                className="inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

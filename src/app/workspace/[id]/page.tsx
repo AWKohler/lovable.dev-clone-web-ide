@@ -1,14 +1,54 @@
-'use client';
-
-import { useParams, useSearchParams } from 'next/navigation';
+import { auth } from '@clerk/nextjs/server';
+import { getDb } from '@/db';
+import { projects } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { Workspace } from '@/components/workspace';
 
-export default function WorkspacePage() {
-  const params = useParams();
-  const search = useSearchParams();
-  const projectId = params.id as string;
-  const initialPrompt = search.get('prompt') ?? undefined;
-  const platform = (search.get('platform') as 'web' | 'mobile') || undefined;
+type WorkspacePageProps = {
+  params: { id: string };
+  searchParams: Record<string, string | string[] | undefined>;
+};
+
+export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
+  const { userId, redirectToSignIn } = await auth();
+  const projectId = params.id;
+  const initialPrompt = typeof searchParams.prompt === 'string' ? searchParams.prompt : undefined;
+  const platform = typeof searchParams.platform === 'string' ? (searchParams.platform as 'web' | 'mobile') : undefined;
+
+  if (!userId) {
+    return redirectToSignIn({ returnBackUrl: `/workspace/${projectId}` });
+  }
+
+  const db = getDb();
+  const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
+
+  if (!proj || proj.userId !== userId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-elevated text-[var(--sand-text)]">
+        <div className="max-w-md text-center space-y-4 p-8 rounded-2xl border border-border bg-white shadow-sm">
+          <h1 className="text-2xl font-semibold">No access to this workspace</h1>
+          <p className="text-sm text-neutral-600">
+            You don&apos;t have permission to view this project. If you think this is a mistake, check that you&apos;re
+            signed in with the correct account.
+          </p>
+          <div className="flex items-center justify-center gap-2">
+            <a
+              href="/projects"
+              className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 transition"
+            >
+              Go to my projects
+            </a>
+            <a
+              href="/"
+              className="inline-flex items-center rounded-xl border border-border bg-elevated px-4 py-2 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
+            >
+              Back home
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return <Workspace projectId={projectId} initialPrompt={initialPrompt} platform={platform} />;
 }

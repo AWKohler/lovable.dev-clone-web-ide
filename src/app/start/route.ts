@@ -25,7 +25,12 @@ export async function GET(request: Request) {
 
   try {
     const db = getDb();
-    const name = prompt?.trim() ? prompt.slice(0, 48) : 'New Project';
+    const requestedName = url.searchParams.get('name');
+    const name = requestedName?.trim()
+      ? requestedName.trim().slice(0, 48)
+      : prompt?.trim()
+        ? prompt.slice(0, 48)
+        : 'New Project';
     const [project] = await db
       .insert(projects)
       .values({ name, userId, platform, model })
