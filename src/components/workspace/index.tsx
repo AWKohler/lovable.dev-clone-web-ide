@@ -9,6 +9,8 @@ import { useToast } from "@/components/ui/toast";
 import JSZip from "jszip";
 import { FileTree } from "./file-tree";
 import { FileSearch } from "./file-search";
+import { EnvPanel } from "./env-panel";
+import { downloadRepoToWebContainer } from "@/lib/github";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { CodeEditor } from "./code-editor";
 import { TerminalTabs } from "./terminal-tabs";
@@ -54,7 +56,7 @@ export function Workspace({
   const [fileContent, setFileContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<"files" | "search">("files");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env">("files");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("preview");
   const [previews, setPreviews] = useState<PreviewInfo[]>([]);
@@ -297,7 +299,29 @@ export function Workspace({
       }
       setIsStartingServer(true);
       try {
-        const res = await DevServerManager.start();
+        // Fetch environment variables from the API
+        let envVars: Record<string, string> = {};
+        try {
+          const envResponse = await fetch(`/api/projects/${projectId}/env`);
+          if (envResponse.ok) {
+            const envData = await envResponse.json();
+            // Add system env vars (like VITE_CONVEX_URL)
+            for (const env of envData.systemEnvVars || []) {
+              envVars[env.key] = env.value;
+            }
+            // Add user env vars
+            for (const env of envData.envVars || []) {
+              envVars[env.key] = env.value;
+            }
+            if (Object.keys(envVars).length > 0) {
+              console.log(`Injecting ${Object.keys(envVars).length} environment variable(s)`);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to fetch env vars, starting without them:", e);
+        }
+
+        const res = await DevServerManager.start(envVars);
         console.log(res.message);
       } catch (error) {
         console.error("Failed to start dev server:", error);
@@ -305,7 +329,7 @@ export function Workspace({
         setIsStartingServer(false);
       }
     },
-    [isInstalled, runInstall],
+    [isInstalled, runInstall, projectId],
   );
 
   const stopDevServer = useCallback(async (_container?: WebContainer) => {
@@ -390,6 +414,41 @@ export function Workspace({
 
       // Start adding files from root
       await addFilesToZip(container, "/", zip);
+
+      // Add .env.example file with environment variables
+      try {
+        const envResponse = await fetch(`/api/projects/${projectId}/env`);
+        if (envResponse.ok) {
+          const envData = await envResponse.json();
+          const envLines: string[] = [];
+
+          // Add header comment
+          envLines.push("# Environment Variables");
+          envLines.push("# Copy this file to .env and fill in your values");
+          envLines.push("");
+
+          // Add system env vars (like VITE_CONVEX_URL)
+          for (const env of envData.systemEnvVars || []) {
+            envLines.push(`${env.key}=${env.value}`);
+          }
+
+          // Add user env vars (placeholder values for secrets)
+          for (const env of envData.envVars || []) {
+            if (env.isSecret) {
+              envLines.push(`${env.key}=your-value-here`);
+            } else {
+              envLines.push(`${env.key}=${env.value}`);
+            }
+          }
+
+          // Only add file if there are env vars
+          if (envData.systemEnvVars?.length > 0 || envData.envVars?.length > 0) {
+            zip.file(".env.example", envLines.join("\n"));
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to include .env.example in download:", e);
+      }
 
       // Generate zip file
       const blob = await zip.generateAsync({ type: "blob" });
@@ -750,587 +809,17 @@ export default function RootLayout() {
             });
             // No external fetch; files populated locally.
           } else {
-            // Initialize with Vite + React + TypeScript + Tailwind structure
-            await container.mount({
-              "README.md": {
-                file: { contents: "# React + TypeScript + Vite" },
-              },
-              "package.json": {
-                file: {
-                  contents: JSON.stringify(
-                    {
-                      name: projectId.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-                      private: true,
-                      version: "0.0.0",
-                      type: "module",
-                      packageManager: "pnpm@9.0.0",
-                      engines: {
-                        node: ">=18.0.0",
-                        pnpm: ">=8.0.0",
-                      },
-                      scripts: {
-                        dev: "vite",
-                        build: "tsc -b && vite build",
-                        lint: "eslint .",
-                        preview: "vite preview",
-                      },
-                      dependencies: {
-                        react: "^18.3.1",
-                        "react-dom": "^18.3.1",
-                        clsx: "^2.1.1",
-                        "tailwind-merge": "^2.5.4",
-                      },
-                      devDependencies: {
-                        "@eslint/js": "^9.17.0",
-                        "@tailwindcss/vite": "^4.0.0-beta.6",
-                        "@types/node": "^22.10.2",
-                        "@types/react": "^18.3.17",
-                        "@types/react-dom": "^18.3.5",
-                        "@vitejs/plugin-react": "^4.3.4",
-                        eslint: "^9.17.0",
-                        "eslint-plugin-react-hooks": "^5.0.0",
-                        "eslint-plugin-react-refresh": "^0.4.16",
-                        globals: "^15.13.0",
-                        tailwindcss: "^4.0.0-beta.6",
-                        typescript: "~5.6.2",
-                        "typescript-eslint": "^8.18.2",
-                        vite: "^6.0.5",
-                      },
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              },
-              "index.html": {
-                file: {
-                  contents: `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>`,
-                },
-              },
-              "vite.config.ts": {
-                file: {
-                  contents: `import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    react(),
-  ],
-  server: {
-    watch: {
-      usePolling: true,
-      interval: 150,
-      binaryInterval: 300,
-      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**']
-    },
-    // Disable file watching optimizations that can cause issues in WebContainers
-    fs: {
-      strict: false
-    },
-    // Enable HMR error overlay
-    hmr: {
-      overlay: true
-    }
-  },
-  resolve: {
-    alias: {
-      "@": "/src",
-    },
-  },
-  // Optimize for WebContainer environment
-  define: {
-    'process.env.VITE_WEBCONTAINER': 'true'
-  },
-  optimizeDeps: {
-    // Reduce aggressive pre-bundling that can conflict with file saves
-    include: ['react', 'react-dom'],
-    force: false
-  },
-  // Reduce build optimizations that might interfere with file watching
-  build: {
-    rollupOptions: {
-      watch: {
-        buildDelay: 100
-      }
-    }
-  }
-})`,
-                },
-              },
-              "tsconfig.json": {
-                file: {
-                  contents: JSON.stringify(
-                    {
-                      compilerOptions: {
-                        target: "ESNext",
-                        useDefineForClassFields: true,
-                        lib: ["ESNext", "DOM"],
-                        module: "ESNext",
-                        skipLibCheck: true,
-                        moduleResolution: "bundler",
-                        allowImportingTsExtensions: true,
-                        resolveJsonModule: true,
-                        isolatedModules: true,
-                        noEmit: true,
-                        jsx: "react-jsx",
-                        baseUrl: ".",
-                        paths: {
-                          "@/*": ["./src/*"],
-                        },
-                      },
-                      include: ["src"],
-                      references: [
-                        { path: "./tsconfig.app.json" },
-                        { path: "./tsconfig.node.json" },
-                      ],
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              },
-              "tsconfig.app.json": {
-                file: {
-                  contents: JSON.stringify(
-                    {
-                      compilerOptions: {
-                        tsBuildInfoFile:
-                          "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-                        target: "ES2022",
-                        useDefineForClassFields: true,
-                        lib: ["ES2022", "DOM", "DOM.Iterable"],
-                        module: "ESNext",
-                        skipLibCheck: true,
-                        moduleResolution: "bundler",
-                        allowImportingTsExtensions: true,
-                        verbatimModuleSyntax: true,
-                        moduleDetection: "force",
-                        noEmit: true,
-                        jsx: "react-jsx",
-                        strict: true,
-                        noUnusedLocals: true,
-                        noUnusedParameters: true,
-                        erasableSyntaxOnly: true,
-                        noFallthroughCasesInSwitch: true,
-                        noUncheckedSideEffectImports: true,
-                        baseUrl: ".",
-                        paths: {
-                          "@/*": ["./src/*"],
-                        },
-                      },
-                      include: ["src"],
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              },
-              "tsconfig.node.json": {
-                file: {
-                  contents: JSON.stringify(
-                    {
-                      compilerOptions: {
-                        tsBuildInfoFile:
-                          "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
-                        target: "ES2023",
-                        lib: ["ES2023"],
-                        module: "ESNext",
-                        skipLibCheck: true,
-                        moduleResolution: "bundler",
-                        allowImportingTsExtensions: true,
-                        verbatimModuleSyntax: true,
-                        moduleDetection: "force",
-                        noEmit: true,
-                        strict: true,
-                        noUnusedLocals: true,
-                        noUnusedParameters: true,
-                        erasableSyntaxOnly: true,
-                        noFallthroughCasesInSwitch: true,
-                        noUncheckedSideEffectImports: true,
-                      },
-                      include: ["vite.config.ts"],
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              },
-              "components.json": {
-                file: {
-                  contents: JSON.stringify(
-                    {
-                      $schema: "https://ui.shadcn.com/schema.json",
-                      style: "new-york",
-                      rsc: false,
-                      tsx: true,
-                      tailwind: {
-                        config: "tailwind.config.js",
-                        css: "src/index.css",
-                        baseColor: "neutral",
-                        cssVariables: true,
-                      },
-                      aliases: {
-                        components: "@/components",
-                        utils: "@/lib/utils",
-                      },
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              },
-              "eslint.config.js": {
-                file: {
-                  contents: `import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import { globalIgnores } from 'eslint/config'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs['recommended-latest'],
-      reactRefresh.configs.vite,
-    ],
-    languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
-    },
-  },
-])`,
-                },
-              },
-              ".gitignore": {
-                file: {
-                  contents: `# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?`,
-                },
-              },
-              src: {
-                directory: {
-                  "main.tsx": {
-                    file: {
-                      contents: `import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-import ErrorBoundary from './ErrorBoundary.tsx'
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
-
-// ============================================================================
-// Debug: Forward iframe console and Vite HMR status to parent window
-// ============================================================================
-if (typeof window !== 'undefined' && window.parent !== window) {
-  // Forward console messages to parent
-  const originalConsole = {
-    log: console.log.bind(console),
-    warn: console.warn.bind(console),
-    error: console.error.bind(console),
-  };
-
-  const forwardToParent = (level: string, ...args: unknown[]) => {
-    try {
-      window.parent.postMessage({
-        type: 'IFRAME_CONSOLE',
-        level,
-        message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '),
-      }, '*');
-    } catch {}
-  };
-
-  console.log = (...args) => { originalConsole.log(...args); forwardToParent('log', ...args); };
-  console.warn = (...args) => { originalConsole.warn(...args); forwardToParent('warn', ...args); };
-  console.error = (...args) => { originalConsole.error(...args); forwardToParent('error', ...args); };
-
-  // Forward uncaught errors
-  window.addEventListener('error', (e) => {
-    window.parent.postMessage({
-      type: 'IFRAME_ERROR',
-      message: e.message,
-      filename: e.filename,
-      lineno: e.lineno,
-      colno: e.colno,
-    }, '*');
-  });
-
-  // Forward unhandled promise rejections
-  window.addEventListener('unhandledrejection', (e) => {
-    window.parent.postMessage({
-      type: 'IFRAME_ERROR',
-      message: 'Unhandled Promise Rejection: ' + String(e.reason),
-    }, '*');
-  });
-
-  // Listen for Vite HMR events
-  if (import.meta.hot) {
-    import.meta.hot.on('vite:beforeUpdate', () => {
-      window.parent.postMessage({ type: 'VITE_HMR', event: 'beforeUpdate' }, '*');
-    });
-    import.meta.hot.on('vite:afterUpdate', () => {
-      window.parent.postMessage({ type: 'VITE_HMR', event: 'afterUpdate' }, '*');
-    });
-    import.meta.hot.on('vite:error', (err) => {
-      window.parent.postMessage({ type: 'VITE_HMR', event: 'error', error: err }, '*');
-    });
-    import.meta.hot.on('vite:ws:connect', () => {
-      window.parent.postMessage({ type: 'VITE_HMR', event: 'connected' }, '*');
-    });
-    import.meta.hot.on('vite:ws:disconnect', () => {
-      window.parent.postMessage({ type: 'VITE_HMR', event: 'disconnected' }, '*');
-    });
-    // Signal that HMR module is loaded
-    window.parent.postMessage({ type: 'VITE_HMR', event: 'hmrModuleLoaded' }, '*');
-  } else {
-    window.parent.postMessage({ type: 'VITE_HMR', event: 'hmrNotAvailable' }, '*');
-  }
-}
-
-// HTML Snapshot Capture for Project Thumbnails
-// DO NOT REMOVE: This code enables automatic thumbnail generation
-// It sends the rendered HTML to the parent window for snapshot capture
-if (typeof window !== 'undefined') {
-  window.addEventListener('load', () => {
-    console.log('📸 Page loaded, will send HTML snapshot in 500ms...');
-    setTimeout(() => {
-      try {
-        const html = document.documentElement.outerHTML;
-        console.log('📸 Sending HTML snapshot to parent...', html.length, 'bytes');
-        window.parent.postMessage(
-          {
-            type: 'HTML_SNAPSHOT',
-            html: html,
-          },
-          '*'
-        );
-        console.log('✅ HTML snapshot sent!');
-      } catch (e) {
-        console.error('❌ Could not send HTML snapshot:', e);
-      }
-    }, 500); // Wait 500ms after load for rendering to complete
-  });
-}`,
-                    },
-                  },
-                  "App.tsx": {
-                    file: {
-                      contents: `function App() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <h1 className="text-2xl font-bold text-gray-800">
-        ✅ Setup successful! You can now start building with Vite + Tailwind +
-        shadcn/ui.
-      </h1>
-    </div>
-  )
-}
-
-export default App`,
-                    },
-                  },
-                  "index.css": {
-                    file: {
-                      contents: '@import "tailwindcss";',
-                    },
-                  },
-                  "vite-env.d.ts": {
-                    file: {
-                      contents: '/// <reference types="vite/client" />',
-                    },
-                  },
-                  "ErrorBoundary.tsx": {
-                    file: {
-                      contents: `import { Component, ErrorInfo, ReactNode } from 'react';
-
-interface Props {
-  children: ReactNode;
-}
-
-interface State {
-  hasError: boolean;
-  error: Error | null;
-  errorInfo: ErrorInfo | null;
-}
-
-class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
-  }
-
-  static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.setState({ errorInfo });
-
-    // Forward error to parent window
-    if (typeof window !== 'undefined' && window.parent !== window) {
-      window.parent.postMessage({
-        type: 'REACT_ERROR',
-        message: error.message,
-        stack: error.stack,
-        componentStack: errorInfo.componentStack,
-      }, '*');
-    }
-
-    console.error('React Error Boundary caught:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      const { error, errorInfo } = this.state;
-      return (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          color: '#ff6b6b',
-          fontFamily: 'ui-monospace, monospace',
-          fontSize: '14px',
-          padding: '20px',
-          overflow: 'auto',
-          zIndex: 99999,
-        }}>
-          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-            <h1 style={{ color: '#ff6b6b', fontSize: '24px', marginBottom: '16px' }}>
-              ❌ Runtime Error
-            </h1>
-            <div style={{
-              backgroundColor: 'rgba(255, 107, 107, 0.1)',
-              border: '1px solid #ff6b6b',
-              borderRadius: '8px',
-              padding: '16px',
-              marginBottom: '16px',
-            }}>
-              <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: '8px' }}>
-                {error?.message || 'Unknown error'}
-              </div>
-              {error?.stack && (
-                <pre style={{
-                  color: '#aaa',
-                  fontSize: '12px',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  margin: 0,
-                }}>
-                  {error.stack}
-                </pre>
-              )}
-            </div>
-            {errorInfo?.componentStack && (
-              <div style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '8px',
-                padding: '16px',
-              }}>
-                <div style={{ color: '#888', marginBottom: '8px' }}>Component Stack:</div>
-                <pre style={{
-                  color: '#666',
-                  fontSize: '12px',
-                  whiteSpace: 'pre-wrap',
-                  margin: 0,
-                }}>
-                  {errorInfo.componentStack}
-                </pre>
-              </div>
-            )}
-            <button
-              onClick={() => window.location.reload()}
-              style={{
-                marginTop: '20px',
-                padding: '10px 20px',
-                backgroundColor: '#ff6b6b',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              Reload Page
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-export default ErrorBoundary;`,
-                    },
-                  },
-                  lib: {
-                    directory: {
-                      "utils.ts": {
-                        file: {
-                          contents: `import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}`,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
+            // Download Vite + Convex template from GitHub
+            console.log("📥 Downloading Vite+Convex template from GitHub...");
+            await downloadRepoToWebContainer(container, {
+              owner: "AWKohler",
+              repo: "vite_convex_template",
+              ref: "main",
             });
+            console.log("✅ Template downloaded successfully");
           }
         }
+
 
         // Get initial file list
         await refreshFileTree(container);
@@ -1923,10 +1412,11 @@ export function cn(...inputs: ClassValue[]) {
                         [
                           { value: "files", text: "Files" },
                           { value: "search", text: "Search" },
-                        ] as TabOption<"files" | "search">[]
+                          { value: "env", text: "ENV" },
+                        ] as TabOption<"files" | "search" | "env">[]
                       }
                       selected={sidebarTab}
-                      onSelect={(v) => setSidebarTab(v as "files" | "search")}
+                      onSelect={(v) => setSidebarTab(v as "files" | "search" | "env")}
                     />
                   </div>
                   <div className="flex-1 overflow-auto modern-scrollbar">
@@ -1936,7 +1426,7 @@ export function cn(...inputs: ClassValue[]) {
                         selectedFile={selectedFile}
                         onFileSelect={handleFileSelect}
                       />
-                    ) : (
+                    ) : sidebarTab === "search" ? (
                       <FileSearch
                         files={files}
                         webcontainer={webcontainer}
@@ -1945,6 +1435,8 @@ export function cn(...inputs: ClassValue[]) {
                           handleFileSelect(path);
                         }}
                       />
+                    ) : (
+                      <EnvPanel projectId={projectId} />
                     )}
                   </div>
                 </div>

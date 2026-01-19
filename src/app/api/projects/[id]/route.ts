@@ -3,6 +3,7 @@ import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { deleteConvexBackend } from '@/lib/convex-platform';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -71,7 +72,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const [proj] = await db.select().from(projects).where(eq(projects.id, resolvedParams.id));
     if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Delete the project (cascades to chat sessions and messages)
+    // Delete Convex backend if it exists
+    if (proj.convexProjectId) {
+      try {
+        await deleteConvexBackend(proj.convexProjectId);
+        console.log(`Convex backend deleted for project ${resolvedParams.id}`);
+      } catch (error) {
+        // Log error but continue with project deletion
+        console.error('Failed to delete Convex backend:', error);
+      }
+    }
+
+    // Delete the project (cascades to chat sessions, messages, and env vars)
     await db.delete(projects).where(eq(projects.id, resolvedParams.id));
 
     return NextResponse.json({ success: true, message: 'Project deleted' });

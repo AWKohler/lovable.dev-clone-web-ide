@@ -74,7 +74,11 @@ class DevServerManagerImpl {
     return false;
   }
 
-  async start(): Promise<{ ok: boolean; message: string; alreadyRunning?: boolean }> {
+  /**
+   * Start the dev server with optional environment variables
+   * @param envVars - Environment variables to inject (e.g., VITE_CONVEX_URL)
+   */
+  async start(envVars?: Record<string, string>): Promise<{ ok: boolean; message: string; alreadyRunning?: boolean }> {
     await this.initContainerListeners();
     const container = await WebContainerManager.getInstance();
 
@@ -106,10 +110,16 @@ class DevServerManagerImpl {
 
     // Start server based on platform
     const platform = await this.detectPlatform(container);
+
+    // Build spawn options with environment variables
+    const spawnOptions = envVars && Object.keys(envVars).length > 0
+      ? { env: envVars }
+      : undefined;
+
     try {
       const proc = platform === 'mobile'
-        ? await container.spawn('pnpm', ['exec', 'expo', 'start', '--tunnel'])
-        : await container.spawn('pnpm', ['dev']);
+        ? await container.spawn('pnpm', ['exec', 'expo', 'start', '--tunnel'], spawnOptions)
+        : await container.spawn('pnpm', ['dev'], spawnOptions);
 
       this.process = proc as unknown as Proc;
       this.startedByTool = true;

@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, text, jsonb, integer, bigint, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core';
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -13,6 +13,11 @@ export const projects = pgTable('projects', {
   // UploadThing file keys for deletion (format: "fileKey" from uploadthing)
   thumbnailKey: text('thumbnail_key'),
   htmlSnapshotKey: text('html_snapshot_key'),
+  // Convex backend integration (for web projects)
+  convexProjectId: text('convex_project_id'),       // Convex platform project ID
+  convexDeploymentId: text('convex_deployment_id'), // Deployment name (e.g., "happy-otter-123")
+  convexDeployUrl: text('convex_deploy_url'),       // VITE_CONVEX_URL value
+  convexDeployKey: text('convex_deploy_key'),       // Deploy key for pushing functions
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -121,3 +126,20 @@ export const projectSyncManifests = pgTable('project_sync_manifests', {
 
 export type ProjectSyncManifest = typeof projectSyncManifests.$inferSelect;
 export type NewProjectSyncManifest = typeof projectSyncManifests.$inferInsert;
+
+// Project environment variables (user-defined, stored in database)
+export const projectEnvVars = pgTable('project_env_vars', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),           // Variable name (e.g., "API_KEY")
+  value: text('value').notNull(),       // Variable value
+  isSecret: boolean('is_secret').notNull().default(false), // Flag for sensitive values (masked in UI)
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  projectKeyUnique: uniqueIndex('project_env_vars_project_key_unique').on(t.projectId, t.key),
+  projectIdIdx: index('project_env_vars_project_id_idx').on(t.projectId),
+}));
+
+export type ProjectEnvVar = typeof projectEnvVars.$inferSelect;
+export type NewProjectEnvVar = typeof projectEnvVars.$inferInsert;

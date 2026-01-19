@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { provisionConvexBackend } from '@/lib/convex-platform';
 
 export async function GET(request: Request) {
   const { userId, redirectToSignIn } = await auth();
@@ -35,6 +37,31 @@ export async function GET(request: Request) {
       .insert(projects)
       .values({ name, userId, platform, model })
       .returning();
+
+    // For web projects, provision a Convex backend
+    if (platform === 'web') {
+      try {
+        const convexProjectName = `ide-${project.id.slice(0, 8)}`;
+        const convex = await provisionConvexBackend(convexProjectName);
+
+        // Update project with Convex details
+        await db.update(projects)
+          .set({
+            convexProjectId: convex.projectId,
+            convexDeploymentId: convex.deploymentId,
+            convexDeployUrl: convex.deployUrl,
+            convexDeployKey: convex.deployKey,
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, project.id));
+
+        console.log(`Convex backend provisioned for project ${project.id}: ${convex.deployUrl}`);
+      } catch (error) {
+        // Log error but don't fail project creation
+        // User can still use the IDE, just without Convex backend
+        console.error('Failed to provision Convex backend:', error);
+      }
+    }
 
     // Redirect to workspace and pass starter prompt for auto-run
     const workspaceUrl = new URL(`${url.origin}/workspace/${project.id}`);
