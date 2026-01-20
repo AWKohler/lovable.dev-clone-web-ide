@@ -300,7 +300,7 @@ export function Workspace({
       setIsStartingServer(true);
       try {
         // Fetch environment variables from the API
-        let envVars: Record<string, string> = {};
+        const envVars: Record<string, string> = {};
         try {
           const envResponse = await fetch(`/api/projects/${projectId}/env`);
           if (envResponse.ok) {

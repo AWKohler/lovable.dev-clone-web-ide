@@ -224,7 +224,7 @@ export const WebContainerAgent = {
     }
   },
 
-  async writeFile(filePath: string, content: string): Promise<
+  async writeFile(filePath: string, content: string, projectId?: string): Promise<
     | { ok: true; message: string; path: string; created: boolean; size?: string }
     | { ok: false; message: string; path?: string; suggestion?: string }
   > {
@@ -327,14 +327,16 @@ export const WebContainerAgent = {
       );
 
       // Save project state (10 second timeout)
-      try {
-        await withTimeout(
-          WebContainerManager.saveProjectState('default'),
-          10000,
-          'saveProjectState'
-        );
-      } catch {
-        // Non-fatal, log but continue
+      if (projectId) {
+        try {
+          await withTimeout(
+            WebContainerManager.saveProjectState(projectId),
+            10000,
+            'saveProjectState'
+          );
+        } catch {
+          // Non-fatal, log but continue
+        }
       }
 
       const size = new Blob([content]).size;
@@ -360,7 +362,7 @@ export const WebContainerAgent = {
     }
   },
 
-  async applyDiff(filePath: string, diff: string): Promise<ApplyDiffResult> {
+  async applyDiff(filePath: string, diff: string, projectId?: string): Promise<ApplyDiffResult> {
     try {
       // Normalize the path to handle any incorrect formatting
       filePath = normalizePath(filePath);
@@ -440,14 +442,16 @@ export const WebContainerAgent = {
       );
 
       // Save project state (10 second timeout, non-fatal)
-      try {
-        await withTimeout(
-          WebContainerManager.saveProjectState('default'),
-          10000,
-          'saveProjectState after applyDiff'
-        );
-      } catch {
-        // Non-fatal, continue
+      if (projectId) {
+        try {
+          await withTimeout(
+            WebContainerManager.saveProjectState(projectId),
+            10000,
+            'saveProjectState after applyDiff'
+          );
+        } catch {
+          // Non-fatal, continue
+        }
       }
 
       // Build success message
@@ -858,6 +862,43 @@ export const WebContainerAgent = {
       return {
         ok: false,
         message: `❌ Failed to refresh preview: ${errorMsg}\n\nThis might be a browser environment issue.`,
+      };
+    }
+  },
+
+  async deployConvex(projectId: string): Promise<{ ok: boolean; message: string; output?: string }> {
+    try {
+      // Get container instance
+      const container = await this.getContainer();
+
+      // Import the deploy function dynamically
+      const { deployConvexToFly } = await import('@/lib/convex-deploy');
+
+      // Deploy with 5 minute timeout (Convex deployment can take time with npm install + convex deploy)
+      const result = await withTimeout(
+        deployConvexToFly(projectId, container),
+        300000,
+        'deployConvex'
+      );
+
+      if (result.ok) {
+        return {
+          ok: true,
+          message: `✅ Convex deployment completed successfully!\n\n${result.output}\n\nYour Convex functions are now live and available in the application.`,
+          output: result.output,
+        };
+      } else {
+        return {
+          ok: false,
+          message: `❌ Convex deployment failed: ${result.error || 'Unknown error'}\n\n${result.output}\n\nSuggestion: Check the deployment output above for details. Common issues include syntax errors in Convex functions, missing dependencies, or schema validation errors.`,
+          output: result.output,
+        };
+      }
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      return {
+        ok: false,
+        message: `❌ Failed to deploy Convex: ${errorMsg}\n\nPossible reasons:\n- Deployment timed out (took longer than 5 minutes)\n- Fly.io worker is not available\n- Network connectivity issue\n- Missing Convex backend configuration\n\nSuggestion: Verify the project has a Convex backend provisioned and the convex folder exists.`,
       };
     }
   },

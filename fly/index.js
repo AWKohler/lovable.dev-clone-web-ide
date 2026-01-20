@@ -1,21 +1,3 @@
-// import http from "http";
-
-// const port = process.env.PORT || 8080;
-
-// // Minimal placeholder worker that accepts POST requests.
-// const server = http.createServer(async (req, res) => {
-//   if (req.method !== "POST") {
-//     res.writeHead(405);
-//     return res.end();
-//   }
-
-//   res.writeHead(200);
-//   res.end("ok");
-// });
-
-// server.listen(port, () => {
-//   console.log(`Worker listening on ${port}`);
-// });
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -32,12 +14,12 @@ if (!EXPECTED_TOKEN) {
   throw new Error("WORKER_AUTH_TOKEN is not set");
 }
 
-function run(cmd, args, options = {}) {
+function run(cmd, args, { cwd, env, res }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, options);
+    const child = spawn(cmd, args, { cwd, env });
 
-    child.stdout.on("data", (d) => options.onStdout?.(d));
-    child.stderr.on("data", (d) => options.onStderr?.(d));
+    child.stdout.on("data", (d) => res.write(d));
+    child.stderr.on("data", (d) => res.write(d));
 
     child.on("close", (code) => {
       if (code === 0) resolve();
@@ -58,11 +40,18 @@ const server = http.createServer(async (req, res) => {
     return res.end("unauthorized");
   }
 
-  // Create temp directory
+  const deployKey = req.headers["x-convex-deploy-key"];
+  if (!deployKey) {
+    res.writeHead(400);
+    return res.end("Missing X-Convex-Deploy-Key");
+  }
+
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "convex-job-"));
 
   try {
-    // Save ZIP to disk
+    // Save ZIP
     const zipPath = path.join(jobDir, "snapshot.zip");
     const writeStream = fs.createWriteStream(zipPath);
     req.pipe(writeStream);
@@ -82,8 +71,8 @@ const server = http.createServer(async (req, res) => {
 
     await run("npm", ["install", "--omit=dev"], {
       cwd: jobDir,
-      onStdout: (d) => res.write(d),
-      onStderr: (d) => res.write(d),
+      env: process.env,
+      res,
     });
 
     res.write("\nRunning convex deploy...\n");
@@ -92,29 +81,16 @@ const server = http.createServer(async (req, res) => {
       cwd: jobDir,
       env: {
         ...process.env,
-        CONVEX_DEPLOY_KEY: process.env.CONVEX_DEPLOY_KEY,
+        CONVEX_DEPLOY_KEY: deployKey,
       },
-      onStdout: (d) => res.write(d),
-      onStderr: (d) => res.write(d),
+      res,
     });
 
-    res.writeHead(200, { "Content-Type": "text/plain" });
-
-    child.stdout.on("data", (chunk) => {
-      res.write(chunk);
-    });
-
-    child.stderr.on("data", (chunk) => {
-      res.write(chunk);
-    });
-
-    child.on("close", (code) => {
-      res.end(`\nconvex deploy exited with code ${code}\n`);
-    });
+    res.end("\n✅ Convex deploy completed successfully\n");
   } catch (err) {
     console.error(err);
-    res.writeHead(500);
-    res.end("error");
+    res.write(`\n❌ Error: ${err.message}\n`);
+    res.end();
   }
 });
 

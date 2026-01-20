@@ -106,7 +106,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             console.log("write file called")
             const path = String(args.path ?? '');
             const content = String(args.content ?? '');
-            const res = await WebContainerAgent.writeFile(path, content);
+            const res = await WebContainerAgent.writeFile(path, content, projectId);
             await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
@@ -135,7 +135,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             // Capture before content for UI
             let before = '';
             try { before = await WebContainerAgent.readFile(path); } catch {}
-            const res = await WebContainerAgent.applyDiff(path, diff);
+            const res = await WebContainerAgent.applyDiff(path, diff, projectId);
             // Capture after content for UI (only if ok)
             let after = before;
             try { after = await WebContainerAgent.readFile(path); } catch {}
@@ -298,6 +298,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 resultPreview: msg,
               }) : a));
             }
+            break;
+          }
+          case 'convexDeploy': {
+            const res = await WebContainerAgent.deployConvex(projectId);
+            const msg = res.message;
+            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
+              ...a,
+              status: res.ok ? 'success' : 'error',
+              finishedAt: Date.now(),
+              resultPreview: msg,
+            }) : a));
             break;
           }
         }

@@ -266,7 +266,7 @@ export default function Home() {
 
                 <div className="flex items-center gap-2">
                   <SignedOut>
-                    <SignInButton redirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
+                    <SignInButton mode="modal">
                       <button className="hidden sm:inline-flex items-center rounded-xl border border-border bg-elevated px-3.5 py-2 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition">
                         Log in
                       </button>
@@ -489,7 +489,6 @@ export default function Home() {
             <div className="mt-6 flex flex-col sm:flex-row gap-3">
               <SignInButton
                 mode="modal"
-                redirectUrl={typeof window !== "undefined" ? window.location.href : "/"}
                 appearance={{
                   elements: {
                     card: "!h-[25rem] !rounded-b-none",
