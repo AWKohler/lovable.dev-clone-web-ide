@@ -1,28 +1,5 @@
 import { WebContainer } from "@webcontainer/api";
 import JSZip from "jszip";
-import { getDb } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
-
-// FLY_WORKER_URL=https://fly-shy-feather-7138.fly.dev
-//
-
-const FLY_WORKER_URL = "https://fly-shy-feather-7138.fly.dev";
-
-const WORKER_AUTH_TOKEN = "dev-secret";
-
-// const FLY_WORKER_URL = process.env.FLY_WORKER_URL;
-// const WORKER_AUTH_TOKEN = process.env.WORKER_AUTH_TOKEN;
-//
-//
-
-if (!FLY_WORKER_URL) {
-  console.warn("FLY_WORKER_URL is not set - convex deployments will fail");
-}
-
-if (!WORKER_AUTH_TOKEN) {
-  console.warn("WORKER_AUTH_TOKEN is not set - convex deployments will fail");
-}
 
 /**
  * Deploy Convex code to fly.io worker
@@ -33,47 +10,7 @@ export async function deployConvexToFly(
   projectId: string,
   container: WebContainer,
 ): Promise<{ ok: boolean; output: string; error?: string }> {
-  if (!FLY_WORKER_URL) {
-    return {
-      ok: false,
-      output: "",
-      error: "FLY_WORKER_URL is not configured - cannot deploy Convex",
-    };
-  }
-
-  if (!WORKER_AUTH_TOKEN) {
-    return {
-      ok: false,
-      output: "",
-      error: "WORKER_AUTH_TOKEN is not configured - cannot deploy Convex",
-    };
-  }
-
   try {
-    // Fetch project to get deploy key
-    const db = getDb();
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!project) {
-      return {
-        ok: false,
-        output: "",
-        error: "Project not found",
-      };
-    }
-
-    if (!project.convexDeployKey) {
-      return {
-        ok: false,
-        output: "",
-        error:
-          "Project does not have a Convex deploy key - ensure Convex backend was provisioned",
-      };
-    }
 
     // Create zip with ONLY convex folder and supporting files
     const zip = new JSZip();
@@ -131,38 +68,23 @@ export async function deployConvexToFly(
     // Generate zip blob
     const zipBlob = await zip.generateAsync({ type: "blob" });
 
-    // Send to fly.io worker
-    const response = await fetch(FLY_WORKER_URL, {
+    // Send to API route which will handle database access and forward to fly.io
+    const response = await fetch(`/api/projects/${projectId}/convex/deploy`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${WORKER_AUTH_TOKEN}`,
-        "X-Convex-Deploy-Key": project.convexDeployKey,
-      },
       body: zipBlob,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorData = await response.json();
       return {
         ok: false,
-        output: errorText,
-        error: `Deployment failed with status ${response.status}: ${errorText}`,
+        output: errorData.output || "",
+        error: errorData.error || `Deployment failed with status ${response.status}`,
       };
     }
 
-    // Stream the output
-    const output = await response.text();
-
-    // Check if deployment was successful
-    const success = output.includes("✅ Convex deploy completed successfully");
-
-    return {
-      ok: success,
-      output,
-      error: success
-        ? undefined
-        : "Deployment completed but did not report success",
-    };
+    const result = await response.json();
+    return result;
   } catch (error) {
     return {
       ok: false,
