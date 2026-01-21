@@ -61,28 +61,26 @@ export async function POST(
       body: zipBlob,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    // 5. Parse JSON response from fly.io
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
       return NextResponse.json(
         {
           ok: false,
-          output: errorText,
-          error: `Deployment failed with status ${response.status}: ${errorText}`,
+          output: result.logs || '',
+          error: result.error || `Deployment failed with status ${response.status}`,
+          generatedFiles: [],
         },
         { status: response.status }
       );
     }
 
-    // 5. Stream the output
-    const output = await response.text();
-
-    // 6. Check if deployment was successful
-    const success = output.includes('✅ Convex deploy completed successfully');
-
+    // 6. Return success with logs and generated files
     return NextResponse.json({
-      ok: success,
-      output,
-      error: success ? undefined : 'Deployment completed but did not report success',
+      ok: true,
+      output: result.logs || '',
+      generatedFiles: result.generatedFiles || [],
     });
   } catch (error) {
     console.error('Convex deployment error:', error);

@@ -1,6 +1,11 @@
 import { WebContainer } from "@webcontainer/api";
 import JSZip from "jszip";
 
+interface GeneratedFile {
+  path: string;
+  content: string;
+}
+
 /**
  * Deploy Convex code to fly.io worker
  * This zips ONLY the convex folder and supporting files (package.json, lock files, tsconfig.json)
@@ -9,7 +14,7 @@ import JSZip from "jszip";
 export async function deployConvexToFly(
   projectId: string,
   container: WebContainer,
-): Promise<{ ok: boolean; output: string; error?: string }> {
+): Promise<{ ok: boolean; output: string; error?: string; generatedFiles?: GeneratedFile[] }> {
   try {
 
     // Create zip with ONLY convex folder and supporting files
@@ -25,6 +30,7 @@ export async function deployConvexToFly(
         ok: false,
         output: "",
         error: "No convex folder found in project - nothing to deploy",
+        generatedFiles: [],
       };
     }
 
@@ -80,16 +86,23 @@ export async function deployConvexToFly(
         ok: false,
         output: errorData.output || "",
         error: errorData.error || `Deployment failed with status ${response.status}`,
+        generatedFiles: [],
       };
     }
 
     const result = await response.json();
-    return result;
+    return {
+      ok: result.ok,
+      output: result.output,
+      error: result.error,
+      generatedFiles: result.generatedFiles || [],
+    };
   } catch (error) {
     return {
       ok: false,
       output: "",
       error: `Deployment error: ${error instanceof Error ? error.message : String(error)}`,
+      generatedFiles: [],
     };
   }
 }
@@ -108,6 +121,11 @@ async function addFolderToZip(
   });
 
   for (const entry of entries) {
+    // Skip _generated folder - it will be regenerated during deployment
+    if (entry.name === "_generated") {
+      continue;
+    }
+
     const fullPath = `${sourcePath}/${entry.name}`;
     const fullZipPath = `${zipPath}/${entry.name}`;
 

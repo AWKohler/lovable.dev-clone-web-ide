@@ -14,18 +14,43 @@ if (!EXPECTED_TOKEN) {
   throw new Error("WORKER_AUTH_TOKEN is not set");
 }
 
-function run(cmd, args, { cwd, env, res }) {
+function run(cmd, args, { cwd, env, logBuffer }) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd, env });
 
-    child.stdout.on("data", (d) => res.write(d));
-    child.stderr.on("data", (d) => res.write(d));
+    child.stdout.on("data", (d) => {
+      const text = d.toString();
+      logBuffer.push(text);
+    });
+    child.stderr.on("data", (d) => {
+      const text = d.toString();
+      logBuffer.push(text);
+    });
 
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${cmd} exited with code ${code}`));
     });
   });
+}
+
+// Recursively read all files in a directory
+function readDirRecursive(dir, baseDir = dir) {
+  const files = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...readDirRecursive(fullPath, baseDir));
+    } else {
+      const relativePath = path.relative(baseDir, fullPath);
+      const content = fs.readFileSync(fullPath, "utf8");
+      files.push({ path: relativePath, content });
+    }
+  }
+
+  return files;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -46,9 +71,8 @@ const server = http.createServer(async (req, res) => {
     return res.end("Missing X-Convex-Deploy-Key");
   }
 
-  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "convex-job-"));
+  const logBuffer = [];
 
   try {
     // Save ZIP
@@ -67,15 +91,15 @@ const server = http.createServer(async (req, res) => {
       .pipe(unzipper.Extract({ path: jobDir }))
       .promise();
 
-    res.write("Installing dependencies...\n");
+    logBuffer.push("Installing dependencies...\n");
 
     await run("npm", ["install", "--omit=dev"], {
       cwd: jobDir,
       env: process.env,
-      res,
+      logBuffer,
     });
 
-    res.write("\nRunning convex deploy...\n");
+    logBuffer.push("\nRunning convex deploy...\n");
 
     await run("convex", ["deploy"], {
       cwd: jobDir,
@@ -83,14 +107,44 @@ const server = http.createServer(async (req, res) => {
         ...process.env,
         CONVEX_DEPLOY_KEY: deployKey,
       },
-      res,
+      logBuffer,
     });
 
-    res.end("\n✅ Convex deploy completed successfully\n");
+    logBuffer.push("\n✅ Convex deploy completed successfully\n");
+
+    // Read generated files from convex/_generated/
+    let generatedFiles = [];
+    const generatedDir = path.join(jobDir, "convex", "_generated");
+    if (fs.existsSync(generatedDir)) {
+      logBuffer.push("\nCollecting generated types...\n");
+      generatedFiles = readDirRecursive(generatedDir, generatedDir);
+      logBuffer.push(`Collected ${generatedFiles.length} generated file(s)\n`);
+    }
+
+    // Return JSON response with logs and generated files
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        success: true,
+        logs: logBuffer.join(""),
+        generatedFiles: generatedFiles.map((f) => ({
+          path: f.path,
+          content: f.content,
+        })),
+      })
+    );
   } catch (err) {
     console.error(err);
-    res.write(`\n❌ Error: ${err.message}\n`);
-    res.end();
+    logBuffer.push(`\n❌ Error: ${err.message}\n`);
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        success: false,
+        logs: logBuffer.join(""),
+        error: err.message,
+        generatedFiles: [],
+      })
+    );
   }
 });
 

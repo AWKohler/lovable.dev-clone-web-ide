@@ -882,9 +882,76 @@ export const WebContainerAgent = {
       );
 
       if (result.ok) {
+        // Write generated files back to webcontainer
+        if (result.generatedFiles && result.generatedFiles.length > 0) {
+          const generatedDir = '/convex/_generated';
+
+          // Ensure _generated directory exists
+          try {
+            await withTimeout(
+              container.fs.mkdir(generatedDir, { recursive: true }),
+              5000,
+              'mkdir _generated'
+            );
+          } catch (err) {
+            // Ignore if directory already exists
+            const errMsg = getErrorMessage(err);
+            if (!errMsg.includes('EEXIST') && !errMsg.includes('already exists')) {
+              console.warn('Failed to create _generated directory:', errMsg);
+            }
+          }
+
+          // Write each generated file
+          for (const file of result.generatedFiles) {
+            const filePath = `${generatedDir}/${file.path}`;
+
+            // Ensure parent directories exist
+            const lastSlash = filePath.lastIndexOf('/');
+            if (lastSlash > generatedDir.length) {
+              const parentDir = filePath.substring(0, lastSlash);
+              try {
+                await withTimeout(
+                  container.fs.mkdir(parentDir, { recursive: true }),
+                  5000,
+                  `mkdir ${parentDir}`
+                );
+              } catch (err) {
+                const errMsg = getErrorMessage(err);
+                if (!errMsg.includes('EEXIST') && !errMsg.includes('already exists')) {
+                  console.warn(`Failed to create directory ${parentDir}:`, errMsg);
+                }
+              }
+            }
+
+            // Write the file
+            try {
+              await withTimeout(
+                container.fs.writeFile(filePath, file.content),
+                10000,
+                `writeFile ${filePath}`
+              );
+            } catch (err) {
+              console.warn(`Failed to write generated file ${filePath}:`, getErrorMessage(err));
+            }
+          }
+
+          // Save project state after writing generated files
+          if (projectId) {
+            try {
+              await withTimeout(
+                (await import('@/lib/webcontainer')).WebContainerManager.saveProjectState(projectId),
+                10000,
+                'saveProjectState after convex deploy'
+              );
+            } catch {
+              // Non-fatal
+            }
+          }
+        }
+
         return {
           ok: true,
-          message: `✅ Convex deployment completed successfully!\n\n${result.output}\n\nYour Convex functions are now live and available in the application.`,
+          message: `✅ Convex deployment completed successfully!\n\n${result.output}\n\n${result.generatedFiles && result.generatedFiles.length > 0 ? `Synced ${result.generatedFiles.length} generated type file(s) to webcontainer.\n\n` : ''}Your Convex functions are now live and available in the application.`,
           output: result.output,
         };
       } else {
