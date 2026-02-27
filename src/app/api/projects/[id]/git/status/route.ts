@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     };
 
     // Fetch committed state from GitHub if we have a SHA
-    let committedTree: Record<string, string> = {}; // path -> sha
+    const committedTree: Record<string, string> = {}; // path -> sha
 
     if (proj.githubLastPushedSha) {
       const treeRes = await fetch(
