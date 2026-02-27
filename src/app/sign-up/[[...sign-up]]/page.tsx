@@ -59,7 +59,7 @@ export default async function Page({
               <div className="flex-1">
                 <p className="text-base text-black">
                   <span className="relative inline-block min-w-[80px] text-base">
-                    Ask Huggable to build your project
+                    Ask Botflow to build your project
                   </span>
                 </p>
               </div>

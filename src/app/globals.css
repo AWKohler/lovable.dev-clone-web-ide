@@ -155,6 +155,16 @@ body {
     );
 }
 
+.botflow-wordmark-invert {
+    display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+    .botflow-wordmark-invert {
+        filter: invert(1) brightness(1.1);
+    }
+}
+
 /* Animation classes */
 .bolt-fade-in {
     animation: fadeIn 0.3s ease-in-out;

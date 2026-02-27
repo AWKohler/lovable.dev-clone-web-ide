@@ -61,7 +61,7 @@ export default async function Page({
                 <p className="text-base text-black">
                   <span className="relative inline-block min-w-[80px] text-base">
                     {/* <span className="invisible">&ZeroWidthSpace;</span> */}
-                    Ask Huggable to build your project
+                    Ask Botflow to build your project
                     {/* <span
                       className="absolute top-1/2 ml-[2px] inline-block h-[1.4em] w-[2px] -translate-y-1/2 bg-[#1F68DB] opacity-100"
                       aria-hidden="true"

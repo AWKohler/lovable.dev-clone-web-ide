@@ -49,13 +49,13 @@ export function getExpoTemplate(projectId: string) {
         typescript: '~5.8.3'
       }
     }, null, 2) }},
-    'app.json': { file: { contents: JSON.stringify({ expo: { name: 'Huggable Mobile', slug } }, null, 2) }},
+    'app.json': { file: { contents: JSON.stringify({ expo: { name: 'Botflow Mobile', slug } }, null, 2) }},
     'tsconfig.json': { file: { contents: JSON.stringify({ compilerOptions: { jsx: 'react-jsx', strict: true } }, null, 2) }},
     'app/_layout.tsx': { file: { contents: `import { Stack } from 'expo-router';
 export default function RootLayout(){ return <Stack screenOptions={{ headerShown:false }} /> }` }},
     'app/index.tsx': { file: { contents: `import { View, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-export default function Page(){ return (<View style={{flex:1,alignItems:'center',justifyContent:'center'}}><Text>Welcome to Huggable (Expo)</Text><StatusBar style="auto" /></View>); }` }},
+export default function Page(){ return (<View style={{flex:1,alignItems:'center',justifyContent:'center'}}><Text>Welcome to Botflow (Expo)</Text><StatusBar style="auto" /></View>); }` }},
   } as const;
 }
 

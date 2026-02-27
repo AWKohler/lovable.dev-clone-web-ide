@@ -12,6 +12,7 @@ import { FileSearch } from "./file-search";
 import { EnvPanel } from "./env-panel";
 import { downloadRepoToWebContainer } from "@/lib/github";
 import { AgentPanel } from "@/components/agent/AgentPanel";
+import { GitHubPanel } from "./github-panel";
 import { CodeEditor } from "./code-editor";
 import { TerminalTabs } from "./terminal-tabs";
 import { Preview } from "./preview";
@@ -32,6 +33,7 @@ import {
   Download,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import "@/lib/debug-storage"; // Make debug utilities available in console
 
@@ -84,6 +86,25 @@ export function Workspace({
   }>({ syncing: false, lastSyncAt: null });
   const [htmlSnapshotUrl, setHtmlSnapshotUrl] = useState<string | null>(null);
 
+  // GitHub integration state
+  const [githubRepoOwner, setGithubRepoOwner] = useState<string | null>(null);
+  const [githubRepoName, setGithubRepoName] = useState<string | null>(null);
+  const [githubDefaultBranch, setGithubDefaultBranch] = useState<string>("main");
+  const [githubPanelOpen, setGithubPanelOpen] = useState(false);
+  const githubBtnRef = useRef<HTMLButtonElement | null>(null);
+  const searchParams = useSearchParams();
+
+  // Auto-open GitHub panel when returning from OAuth
+  useEffect(() => {
+    if (searchParams.get("github_connected") === "1") {
+      setGithubPanelOpen(true);
+      // Clean up URL param without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("github_connected");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [searchParams]);
+
   // Prevent concurrent initializations within same render
   const initializingRef = useRef(false);
 
@@ -117,6 +138,9 @@ export function Workspace({
           if (proj?.htmlSnapshotUrl) {
             setHtmlSnapshotUrl(proj.htmlSnapshotUrl);
           }
+          if (proj?.githubRepoOwner) setGithubRepoOwner(proj.githubRepoOwner);
+          if (proj?.githubRepoName) setGithubRepoName(proj.githubRepoName);
+          if (proj?.githubDefaultBranch) setGithubDefaultBranch(proj.githubDefaultBranch);
         }
       } catch (e) {
         console.warn("Failed to load project data", e);
@@ -1369,17 +1393,44 @@ export default function RootLayout() {
                 <Download size={16} />
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-8 p-0 aspect-square"
-              onClick={() => {
-                /* TODO: connect GitHub */
-              }}
-              title="GitHub"
-            >
-              <Github size={16} />
-            </Button>
+            <div className="relative">
+              <Button
+                ref={githubBtnRef}
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "w-8 p-0 aspect-square",
+                  githubRepoOwner && githubRepoName && "border-green-500/50 text-green-600 dark:text-green-400"
+                )}
+                onClick={() => setGithubPanelOpen((v) => !v)}
+                title={githubRepoOwner ? `GitHub: ${githubRepoOwner}/${githubRepoName}` : "Connect GitHub"}
+              >
+                <Github size={16} />
+              </Button>
+              {githubRepoOwner && githubRepoName && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface pointer-events-none" />
+              )}
+              <GitHubPanel
+                projectId={projectId}
+                webcontainer={webcontainer}
+                isOpen={githubPanelOpen}
+                onClose={() => setGithubPanelOpen(false)}
+                anchorRef={githubBtnRef}
+                githubRepoOwner={githubRepoOwner}
+                githubRepoName={githubRepoName}
+                githubDefaultBranch={githubDefaultBranch}
+                onRepoConnected={(owner, name, branch, _sha) => {
+                  setGithubRepoOwner(owner);
+                  setGithubRepoName(name);
+                  setGithubDefaultBranch(branch);
+                }}
+                onRepoDisconnected={() => {
+                  setGithubRepoOwner(null);
+                  setGithubRepoName(null);
+                  setGithubDefaultBranch("main");
+                }}
+              />
+            </div>
             <Button
               variant="default"
               size="sm"
