@@ -536,7 +536,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 });
                 if (res.ok) setModel(next);
                 else toast({ title: 'Failed to change model' });
-              } catch (e) {
+              } catch {
                 toast({ title: 'Failed to change model' });
               }
             }}

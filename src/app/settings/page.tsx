@@ -8,7 +8,6 @@ import { useToast } from '@/components/ui/toast';
 export default function SettingsPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -33,10 +32,8 @@ export default function SettingsPage() {
             setHasFireworks(Boolean(data?.hasFireworksKey));
           }
         }
-      } catch (e) {
+      } catch {
         // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -71,7 +68,7 @@ export default function SettingsPage() {
       } else {
         toast({ title: 'Save failed', description: 'Could not save settings.' });
       }
-    } catch (e) {
+    } catch {
       toast({ title: 'Save failed', description: 'Unexpected error saving settings.' });
     } finally {
       setSaving(false);

@@ -680,7 +680,7 @@ export function Preview({
           {/* Left: QR code + Expo Go install guidance */}
           <div className="rounded-xl border border-border bg-elevated p-5 flex flex-col items-center justify-center min-h-[320px] gap-4">
             <div className="flex items-center gap-3">
-              <img
+              <Image
                 src="/ExpoIcon76x76.png"
                 alt="Expo Go"
                 width={44}

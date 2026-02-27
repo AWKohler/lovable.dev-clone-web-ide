@@ -9,21 +9,6 @@
 
 const CONVEX_API_BASE = 'https://api.convex.dev/v1';
 
-interface ConvexProjectResponse {
-  id: number;
-  name: string;
-  slug: string;
-  teamId: number;
-}
-
-interface ConvexDeploymentResponse {
-  id: number;
-  name: string;         // e.g., "happy-otter-123"
-  deploymentType: string;
-  projectId: number;
-}
-
-
 export class ConvexPlatformClient {
   private teamId: string;
   private teamToken: string;
