@@ -37,10 +37,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (
       model &&
       model !== 'gpt-4.1' &&
-      model !== 'claude-sonnet-4.5' &&
+      model !== 'claude-sonnet-4.6' &&
+      model !== 'claude-sonnet-4.5' && // backwards compat
       model !== 'claude-haiku-4.5' &&
-      model !== 'claude-opus-4.5' &&
-      model !== 'kimi-k2-thinking-turbo'
+      model !== 'claude-opus-4.6' &&
+      model !== 'claude-opus-4.5' && // backwards compat
+      model !== 'kimi-k2-thinking-turbo' &&
+      model !== 'fireworks-minimax-m2p5'
     ) {
       return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
     }

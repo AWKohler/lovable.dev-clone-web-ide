@@ -22,7 +22,17 @@ export async function POST(request: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await request.json();
-    const { name, platform, model } = body as { name?: string; platform?: 'web' | 'mobile'; model?: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' };
+    const { name, platform, model } = body as {
+      name?: string;
+      platform?: 'web' | 'mobile';
+      model?:
+        | 'gpt-4.1'
+        | 'claude-sonnet-4.6'
+        | 'claude-haiku-4.5'
+        | 'claude-opus-4.6'
+        | 'kimi-k2-thinking-turbo'
+        | 'fireworks-minimax-m2p5';
+    };
 
     if (!name) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -36,14 +46,16 @@ export async function POST(request: NextRequest) {
         userId,
         platform: platform === 'mobile' ? 'mobile' : 'web',
         model:
-          model === 'claude-sonnet-4.5'
-            ? 'claude-sonnet-4.5'
+          model === 'claude-sonnet-4.6'
+            ? 'claude-sonnet-4.6'
             : model === 'claude-haiku-4.5'
             ? 'claude-haiku-4.5'
-            : model === 'claude-opus-4.5'
-            ? 'claude-opus-4.5'
+            : model === 'claude-opus-4.6'
+            ? 'claude-opus-4.6'
             : model === 'kimi-k2-thinking-turbo'
             ? 'kimi-k2-thinking-turbo'
+            : model === 'fireworks-minimax-m2p5'
+            ? 'fireworks-minimax-m2p5'
             : 'gpt-4.1',
       })
       .returning();

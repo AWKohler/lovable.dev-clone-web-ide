@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 import {
-  Heart,
   Plus,
   Laptop,
   Smartphone,
@@ -17,6 +16,7 @@ import {
   Trash2,
   ExternalLink,
 } from 'lucide-react';
+import { SettingsModal } from '@/components/settings/SettingsModal';
 import type { Project } from '@/db/schema';
 
 export default function ProjectsPage() {
@@ -25,6 +25,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     async function loadProjects() {
@@ -87,11 +88,17 @@ export default function ProjectsPage() {
         <header className="relative">
           <div className="mx-auto max-w-7xl px-6 py-5">
             <div className="flex items-center justify-between">
-              <Link className="flex items-center gap-2" href="/">
-                <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-rose-400 via-orange-400 to-violet-500 shadow-sm">
-                  <Heart className="h-4 w-4 text-white" />
-                </span>
-                <span className="text-xl font-semibold tracking-tight">Huggable</span>
+              <Link className="flex items-center gap-3" href="/">
+                <img
+                  src="/brand/botflow-glyph.svg"
+                  alt=""
+                  className="h-8 w-8"
+                />
+                <img
+                  src="/brand/botflow-wordmark.svg"
+                  alt="Botflow"
+                  className="h-5 w-auto"
+                />
               </Link>
 
               <nav className="hidden md:flex items-center gap-7 text-sm text-neutral-700">
@@ -109,14 +116,14 @@ export default function ProjectsPage() {
                   </SignInButton>
                 </SignedOut>
                 <SignedIn>
-                  <a
-                    href="/settings"
+                  <button
+                    onClick={() => setShowSettings(true)}
                     className="inline-flex items-center justify-center rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm text-neutral-900 shadow-sm hover:bg-neutral-50 transition"
                     title="Settings"
                     aria-label="Settings"
                   >
                     <Cog className="h-4 w-4" />
-                  </a>
+                  </button>
                   <UserButton afterSignOutUrl="/" />
                 </SignedIn>
               </div>
@@ -309,6 +316,8 @@ export default function ProjectsPage() {
       {openMenuId && (
         <div className="fixed inset-0 z-0" onClick={() => setOpenMenuId(null)} />
       )}
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }

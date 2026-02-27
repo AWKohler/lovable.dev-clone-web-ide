@@ -5,6 +5,7 @@ import { useChat } from '@ai-sdk/react';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
 import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX, Cog } from 'lucide-react';
+import { SettingsModal } from '@/components/settings/SettingsModal';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
 import { LiveActions } from '@/components/agent/LiveActions';
@@ -40,12 +41,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
   // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
   const [model, setModel] = useState<
-    'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p1'
+    'gpt-4.1' | 'claude-sonnet-4.6' | 'claude-haiku-4.5' | 'claude-opus-4.6' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5'
   >('gpt-4.1');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
+  const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const { toast } = useToast();
 
   const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
@@ -387,13 +390,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           const proj = await res.json();
           if (
             proj?.model === 'gpt-4.1' ||
-            proj?.model === 'claude-sonnet-4.5' ||
+            proj?.model === 'claude-sonnet-4.6' ||
+            proj?.model === 'claude-sonnet-4.5' || // backwards compat
             proj?.model === 'claude-haiku-4.5' ||
-            proj?.model === 'claude-opus-4.5' ||
+            proj?.model === 'claude-opus-4.6' ||
+            proj?.model === 'claude-opus-4.5' || // backwards compat
             proj?.model === 'kimi-k2-thinking-turbo' ||
-            proj?.model === 'fireworks-minimax-m2p1'
+            proj?.model === 'fireworks-minimax-m2p5'
           ) {
-            setModel(proj.model);
+            // Migrate stored 4.5 values to 4.6
+            const m = proj.model === 'claude-sonnet-4.5' ? 'claude-sonnet-4.6'
+              : proj.model === 'claude-opus-4.5' ? 'claude-opus-4.6'
+              : proj.model;
+            setModel(m);
           }
         }
       } catch {}
@@ -403,6 +412,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           const data = await s.json();
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+          setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
         }
@@ -481,16 +491,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     () =>
             // 'Ask me to inspect files, propose changes as diffs, run dev, etc. For edits, I use SEARCH/REPLACE blocks.',
 
-      'Ask Huggable...',
+      'Ask Botflow...',
     []
   );
 
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
-        <a href="/settings" title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
+        <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
           <Cog size={16} />
-        </a>
+        </button>
         <div className="flex items-center gap-2">
           <select
             className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-muted"
@@ -498,18 +508,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             onChange={async (e) => {
               const next = e.target.value as
                 | 'gpt-4.1'
-                | 'claude-sonnet-4.5'
+                | 'claude-sonnet-4.6'
                 | 'claude-haiku-4.5'
-                | 'claude-opus-4.5'
+                | 'claude-opus-4.6'
                 | 'kimi-k2-thinking-turbo'
-                | 'fireworks-minimax-m2p1';
+                | 'fireworks-minimax-m2p5';
+              const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
               const keyChecks = {
                 'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
-                'claude-sonnet-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-                'claude-haiku-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
-                'claude-opus-4.5': { hasKey: hasAnthropicKey, provider: 'Anthropic' },
+                'claude-sonnet-4.6': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
+                'claude-haiku-4.5': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
+                'claude-opus-4.6': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
                 'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
-                'fireworks-minimax-m2p1': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
+                'fireworks-minimax-m2p5': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
               } as const;
               const check = keyChecks[next];
               if (check.hasKey === false) {
@@ -532,11 +543,11 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             title="Model"
           >
             <option value="gpt-4.1">GPT-4.1</option>
-            <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+            <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
             <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
-            <option value="claude-opus-4.5">Claude Opus 4.5</option>
+            <option value="claude-opus-4.6">Claude Opus 4.6</option>
             <option value="kimi-k2-thinking-turbo">Kimi K2 Thinking Turbo</option>
-            <option value="fireworks-minimax-m2p1">Fireworks MiniMax M2P1</option>
+            <option value="fireworks-minimax-m2p5">Fireworks MiniMax-M2.5</option>
           </select>
           <Button
           type="button"
@@ -627,8 +638,9 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
 
       <form
         onSubmit={(e) => {
-          const usingAnthropic = model === 'claude-sonnet-4.5' || model === 'claude-haiku-4.5' || model === 'claude-opus-4.5';
-          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (usingAnthropic && hasAnthropicKey === false)) {
+          const usingAnthropic = model === 'claude-sonnet-4.6' || model === 'claude-haiku-4.5' || model === 'claude-opus-4.6';
+          const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
+          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (usingAnthropic && hasAnthropicCreds === false)) {
             e.preventDefault();
             toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
             return;
@@ -702,6 +714,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       {/* <div className="mt-1 text-[11px] text-muted">
         Tip: For edits, I apply diffs with SEARCH/REPLACE blocks. If a block fails to match, I’ll ask for a corrected diff.
       </div> */}
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }

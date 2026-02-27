@@ -5,7 +5,7 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   userId: text('user_id').notNull(), // Clerk user id
   platform: text('platform').notNull().default('web'), // 'web' | 'mobile'
-  // Preferred model for this project: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p1'
+  // Preferred model for this project: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5'
   model: text('model').notNull().default('gpt-4.1'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
@@ -18,6 +18,11 @@ export const projects = pgTable('projects', {
   convexDeploymentId: text('convex_deployment_id'), // Deployment name (e.g., "happy-otter-123")
   convexDeployUrl: text('convex_deploy_url'),       // VITE_CONVEX_URL value
   convexDeployKey: text('convex_deploy_key'),       // Deploy key for pushing functions
+  // GitHub repository integration
+  githubRepoOwner: text('github_repo_owner'),         // GitHub username or org
+  githubRepoName: text('github_repo_name'),           // Repository name
+  githubDefaultBranch: text('github_default_branch').default('main'), // Default branch
+  githubLastPushedSha: text('github_last_pushed_sha'), // Last commit SHA pushed to GitHub
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -63,6 +68,14 @@ export const userSettings = pgTable('user_settings', {
   anthropicApiKey: text('anthropic_api_key'),
   moonshotApiKey: text('moonshot_api_key'),
   fireworksApiKey: text('fireworks_api_key'),
+  // Claude Code OAuth (takes priority over anthropicApiKey for Anthropic models)
+  claudeOAuthAccessToken: text('claude_oauth_access_token'),
+  claudeOAuthRefreshToken: text('claude_oauth_refresh_token'),
+  claudeOAuthExpiresAt: bigint('claude_oauth_expires_at', { mode: 'number' }), // Unix ms
+  // GitHub OAuth
+  githubAccessToken: text('github_access_token'),
+  githubUsername: text('github_username'),
+  githubAvatarUrl: text('github_avatar_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
@@ -143,3 +156,20 @@ export const projectEnvVars = pgTable('project_env_vars', {
 
 export type ProjectEnvVar = typeof projectEnvVars.$inferSelect;
 export type NewProjectEnvVar = typeof projectEnvVars.$inferInsert;
+
+// Pending git commits: committed locally, not yet pushed to GitHub
+export const pendingGitCommits = pgTable('pending_git_commits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  message: text('message').notNull(),
+  // Snapshot of changed files at commit time: { path: content (text) | null (deleted) }
+  filesSnapshot: jsonb('files_snapshot').notNull().$type<Record<string, string | null>>(),
+  // SHA of the tree before this commit (from lastPushedSha at commit time)
+  baseSha: text('base_sha'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  projectIdIdx: index('pending_git_commits_project_id_idx').on(t.projectId),
+}));
+
+export type PendingGitCommit = typeof pendingGitCommits.$inferSelect;
+export type NewPendingGitCommit = typeof pendingGitCommits.$inferInsert;

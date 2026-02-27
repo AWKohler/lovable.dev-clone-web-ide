@@ -10,8 +10,10 @@ import {
   useUser,
 } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Heart, Plus, Smartphone, Laptop, Cog } from "lucide-react";
+import { ArrowUp, Plus, Smartphone, Laptop, Cog } from "lucide-react";
+import { SettingsModal } from "@/components/settings/SettingsModal";
 import { useToast } from "@/components/ui/toast";
+import Dither from "@/components/landing/Dither";
 
 export default function Home() {
   const router = useRouter();
@@ -20,17 +22,19 @@ export default function Home() {
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
   const [model, setModel] = useState<
     | "gpt-4.1"
-    | "claude-sonnet-4.5"
+    | "claude-sonnet-4.6"
     | "claude-haiku-4.5"
-    | "claude-opus-4.5"
+    | "claude-opus-4.6"
     | "kimi-k2-thinking-turbo"
-    | "fireworks-minimax-m2p1"
+    | "fireworks-minimax-m2p5"
   >("gpt-4.1");
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
+  const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [projectName, setProjectName] = useState("");
@@ -41,26 +45,36 @@ export default function Home() {
   const PENDING_NAME_KEY = "huggable_pending_project_name";
   const allowedModels = new Set([
     "gpt-4.1",
-    "claude-sonnet-4.5",
+    "claude-sonnet-4.6",
     "claude-haiku-4.5",
-    "claude-opus-4.5",
+    "claude-opus-4.6",
     "kimi-k2-thinking-turbo",
-    "fireworks-minimax-m2p1",
+    "fireworks-minimax-m2p5",
   ]);
+  const landingSignInModalAppearance = {
+    elements: {
+      modalContent: "!max-h-[90vh] !overflow-hidden",
+      cardBox:
+        "!max-h-[90vh] !overflow-y-auto !rounded-2xl !border !border-[var(--sand-border)] !bg-[var(--color-surface)] !shadow-xl",
+      card: "!h-auto !max-h-none !overflow-visible !bg-transparent !border-0 !shadow-none !pb-4",
+      footer: "!mt-2 !pt-2 !bg-transparent",
+    },
+  } as const;
 
   const canSend = useMemo(() => prompt.trim().length > 0, [prompt]);
 
   const ensureModelKeyPresent = () => {
+    const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
     const keyChecks = {
       "gpt-4.1": { hasKey: hasOpenAIKey, provider: "OpenAI" },
-      "claude-sonnet-4.5": { hasKey: hasAnthropicKey, provider: "Anthropic" },
-      "claude-haiku-4.5": { hasKey: hasAnthropicKey, provider: "Anthropic" },
-      "claude-opus-4.5": { hasKey: hasAnthropicKey, provider: "Anthropic" },
+      "claude-sonnet-4.6": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
+      "claude-haiku-4.5": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
+      "claude-opus-4.6": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
       "kimi-k2-thinking-turbo": {
         hasKey: hasMoonshotKey,
         provider: "Moonshot",
       },
-      "fireworks-minimax-m2p1": {
+      "fireworks-minimax-m2p5": {
         hasKey: hasFireworksKey,
         provider: "Fireworks AI",
       },
@@ -156,6 +170,7 @@ export default function Home() {
           const data = await res.json();
           setHasOpenAIKey(Boolean(data?.hasOpenAIKey));
           setHasAnthropicKey(Boolean(data?.hasAnthropicKey));
+          setHasClaudeOAuth(Boolean(data?.hasClaudeOAuth));
           setHasMoonshotKey(Boolean(data?.hasMoonshotKey));
           setHasFireworksKey(Boolean(data?.hasFireworksKey));
         }
@@ -189,38 +204,38 @@ export default function Home() {
 
   return (
     <>
-      <div className="antialiased text-[var(--sand-text)] bg-elevated min-h-screen">
-        {/* Background gradients */}
-        <div className="relative isolate overflow-hidden">
+      <div className="antialiased text-[var(--sand-text)] bg-[var(--sand-bg)] min-h-screen flex flex-col">
+        {/* Background dither */}
+        <div className="relative isolate overflow-hidden flex flex-1 flex-col">
           <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute -top-1/3 -left-1/4 h-[80vh] w-[80vw] rounded-full bg-gradient-to-br from-indigo-300 via-sky-200 to-white blur-3xl opacity-80"></div>
-            <div className="absolute top-1/3 left-1/2 h-[90vh] w-[80vw] -translate-x-1/2 rounded-full bg-gradient-to-tr from-purple-300 via-blue-200 to-rose-200 blur-3xl opacity-80"></div>
-            <div className="absolute bottom-[-20%] left-1/2 h-[70vh] w-[90vw] -translate-x-1/2 rounded-full bg-gradient-to-tr from-orange-400 via-rose-300 to-transparent blur-3xl opacity-70"></div>
-            {/* Grain overlay */}
-            <div
-              className="absolute inset-0 w-full h-full"
-              style={{
-                backgroundImage: 'url("/grain.1ccdda41.png")',
-                backgroundSize: "100px 100px",
-                backgroundRepeat: "repeat",
-                backgroundPosition: "left top",
-                backgroundBlendMode: "overlay",
-                mixBlendMode: "overlay",
-              }}
-            ></div>
+            <Dither
+              className="h-full w-full"
+              colorNum={4}
+              waveAmplitude={0.3}
+              waveFrequency={3}
+              waveSpeed={0.05}
+              pixelSize={2}
+              enableMouseInteraction={false}
+            />
           </div>
 
           {/* Nav */}
           <header className="relative">
             <div className="mx-auto max-w-7xl px-6 py-5">
               <div className="flex items-center justify-between">
-                <a className="flex items-center gap-2" href="#">
-                  <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-rose-400 via-orange-400 to-violet-500 shadow-sm">
-                    <Heart className="h-4 w-4 text-white" />
+                <a className="flex items-center gap-3" href="#">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-elevated shadow-sm">
+                    <img
+                      src="/brand/botflow-glyph.svg"
+                      alt=""
+                      className="h-6 w-6"
+                    />
                   </span>
-                  <span className="text-2xl font-bold tracking-tight text-black">
-                    Huggable
-                  </span>
+                  <img
+                    src="/brand/botflow-wordmark.svg"
+                    alt="Botflow"
+                    className="h-6 w-auto botflow-wordmark-invert"
+                  />
                 </a>
 
                 <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--sand-text)]">
@@ -233,31 +248,31 @@ export default function Home() {
                     </a>
                   </SignedIn>
                   <a
-                    className="hover:text-[var(--sand-text)] transition"
+                    className="font-semibold hover:text-[var(--sand-text)] transition"
                     href="#"
                   >
                     Community
                   </a>
                   <a
-                    className="hover:text-[var(--sand-text)] transition"
+                    className="font-semibold hover:text-[var(--sand-text)] transition"
                     href="#"
                   >
                     Pricing
                   </a>
                   <a
-                    className="hover:text-[var(--sand-text)] transition"
+                    className="font-semibold hover:text-[var(--sand-text)] transition"
                     href="#"
                   >
                     Enterprise
                   </a>
                   <a
-                    className="hover:text-[var(--sand-text)] transition"
+                    className="font-semibold hover:text-[var(--sand-text)] transition"
                     href="#"
                   >
                     Learn
                   </a>
                   <a
-                    className="hover:text-[var(--sand-text)] transition"
+                    className="font-semibold hover:text-[var(--sand-text)] transition"
                     href="#"
                   >
                     Launched
@@ -266,7 +281,10 @@ export default function Home() {
 
                 <div className="flex items-center gap-2">
                   <SignedOut>
-                    <SignInButton mode="modal">
+                    <SignInButton
+                      mode="modal"
+                      appearance={landingSignInModalAppearance}
+                    >
                       <button className="hidden sm:inline-flex items-center rounded-xl border border-border bg-elevated px-3.5 py-2 text-sm font-medium text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition">
                         Log in
                       </button>
@@ -279,14 +297,14 @@ export default function Home() {
                     </button>
                   </SignedOut>
                   <SignedIn>
-                    <a
-                      href="/settings"
+                    <button
+                      onClick={() => setShowSettings(true)}
                       className="inline-flex items-center justify-center rounded-xl border border-border bg-elevated px-2.5 py-2 text-sm text-[var(--sand-text)] shadow-sm hover:bg-neutral-50 transition"
                       title="Settings"
                       aria-label="Settings"
                     >
                       <Cog className="h-4 w-4" />
-                    </a>
+                    </button>
                     <UserButton afterSignOutUrl="/" />
                   </SignedIn>
                 </div>
@@ -300,11 +318,14 @@ export default function Home() {
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight text-[var(--sand-text)] text-center">
                 Build something
                 <span className="inline-flex translate-y-1 align-middle">
-                  <span className="mx-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-rose-400 via-orange-400 to-violet-500 shadow">
-                    <Heart className="h-4 w-4 text-white" />
+                  <span className="mx-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-elevated shadow-sm">
+                    <img
+                      src="/brand/botflow-glyph.svg"
+                      alt=""
+                      className="h-4 w-4"
+                    />
                   </span>
                 </span>
-                {/* Huggable */}
               </h1>
               <p className="mt-4 text-center text-[var(--sand-text)] sm:text-lg">
                 Create apps and websites by chatting with AI
@@ -314,7 +335,7 @@ export default function Home() {
               <div className="mx-auto mt-10 sm:mt-12">
                 <div className="relative rounded-3xl border border-border bg-elevated transition backdrop-blur-sm shadow-[0_2px_0_rgba(0,0,0,0.02),0_20px_60px_-20px_rgba(0,0,0,0.2)]">
                   <textarea
-                    placeholder="Ask Huggable to create a web app that..."
+                    placeholder="Ask Botflow to create a web app that..."
                     className="w-full rounded-5xl bg-transparent px-5 py-4 pr-24 text-base text-[var(--sand-text)] placeholder-neutral-400 outline-none sm:text-lg resize-none"
                     aria-label="Generation prompt"
                     style={{ height: 140 }}
@@ -355,26 +376,26 @@ export default function Home() {
                         setModel(
                           e.target.value as
                             | "gpt-4.1"
-                            | "claude-sonnet-4.5"
+                            | "claude-sonnet-4.6"
                             | "claude-haiku-4.5"
-                            | "claude-opus-4.5"
+                            | "claude-opus-4.6"
                             | "kimi-k2-thinking-turbo"
-                            | "fireworks-minimax-m2p1",
+                            | "fireworks-minimax-m2p5",
                         )
                       }
                       title="Select model"
                     >
                       <option value="gpt-4.1">GPT-4.1</option>
-                      <option value="claude-sonnet-4.5">
-                        Claude Sonnet 4.5
+                      <option value="claude-sonnet-4.6">
+                        Claude Sonnet 4.6
                       </option>
                       <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
-                      <option value="claude-opus-4.5">Claude Opus 4.5</option>
+                      <option value="claude-opus-4.6">Claude Opus 4.6</option>
                       <option value="kimi-k2-thinking-turbo">
                         Kimi K2 Thinking Turbo
                       </option>
-                      <option value="fireworks-minimax-m2p1">
-                        Fireworks MiniMax M2P1
+                      <option value="fireworks-minimax-m2p5">
+                        Fireworks MiniMax-M2.5
                       </option>
                     </select>
                   </div>
@@ -407,58 +428,11 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Community Section (placeholder) */}
-          <section className="relative mt-96">
-            <div className="mx-auto max-w-7xl px-6">
-              <div className="rounded-3xl border border-border bg-elevated shadow-sm">
-                <div className="px-6 py-6 sm:px-8 sm:py-8">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-                      From the Community
-                    </h2>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button className="inline-flex items-center gap-1.5 rounded-full border border-border bg-neutral-50 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 transition">
-                        Popular
-                      </button>
-                      <button className="inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        Discover
-                      </button>
-                      <button className="inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        Internal Tools
-                      </button>
-                      <button className="inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        Website
-                      </button>
-                      <button className="hidden sm:inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        Personal
-                      </button>
-                      <button className="hidden sm:inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        Consumer App
-                      </button>
-                      <button className="hidden md:inline-flex items-center rounded-full border border-border bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 transition">
-                        B2B App
-                      </button>
-                      <a
-                        href="#"
-                        className="ml-1 inline-flex items-center text-sm font-medium text-[var(--sand-text)] hover:text-[var(--sand-text)]"
-                      >
-                        View All
-                      </a>
-                    </div>
-                  </div>
-                  <div className="mt-6 text-[var(--sand-text)] text-sm">
-                    No public projects yet.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
           {/* Footer */}
-          <footer className="relative">
+          <footer className="relative mt-auto">
             <div className="mx-auto max-w-7xl px-6 py-12 text-sm text-[var(--sand-text)]">
               <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-                <p>© 2025 Huggable</p>
+                <p>© 2026 Botflow</p>
                 <div className="flex items-center gap-6">
                   <a className="hover:text-[var(--sand-text)]" href="#">
                     Privacy
@@ -476,6 +450,8 @@ export default function Home() {
         </div>
       </div>
 
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+
       {showAuthDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-xl">
@@ -489,19 +465,7 @@ export default function Home() {
             <div className="mt-6 flex flex-col sm:flex-row gap-3">
               <SignInButton
                 mode="modal"
-                appearance={{
-                  elements: {
-                    card: "!h-[25rem] !rounded-b-none",
-                    footerActionLink: "!-mt-24",
-                    footer: "!bg-surface",
-                    // cardBox: "!h-[80rem]",
-                    // card: "max-h-[190vh] overflow-y-auto",
-                    // headerTitle: "text-lg leading-tight",
-                    // headerSubtitle: "text-sm leading-normal",
-                    // formFieldLabel: "whitespace-normal",
-                    // footerActionText: "whitespace-normal",
-                  },
-                }}
+                appearance={landingSignInModalAppearance}
               >
                 <button className="inline-flex flex-1 items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white shadow hover:opacity-90 transition">
                   Sign in / Sign up

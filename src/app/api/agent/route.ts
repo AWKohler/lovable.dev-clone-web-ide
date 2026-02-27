@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       await req.json();
 
     const systemPromptWeb = [
-      "You are **Huggable**, an expert in-browser coding agent operating inside a **StackBlitz WebContainer**.",
+      "You are **Botflow**, an expert in-browser coding agent operating inside a **StackBlitz WebContainer**.",
       "Your role is to assist users by chatting with them and making changes to their code in real time, while updating the live preview.",
       "",
       "---",
@@ -132,9 +132,14 @@ export async function POST(req: Request) {
       "",
       "### Convex Architecture",
       "- All backend code lives in the `/convex` folder",
+      "- The `/convex` folder is at project root (sibling of `/src`), never inside `/src`",
       "- Functions are TypeScript files that export queries, mutations, and actions",
       "- The schema (`/convex/schema.ts`) defines database tables and is the **single source of truth**",
       "- After ANY changes to Convex code, you **MUST** deploy using the `convexDeploy` tool",
+      "- Frontend imports to generated Convex code must be relative to file location:",
+      "  - From `/src/App.tsx`: `../convex/_generated/react` and `../convex/_generated/dataModel`",
+      "  - From `/src/components/TodoList.tsx`: `../../convex/_generated/react`",
+      "- Never use `./convex/_generated/...` from files inside `/src`",
       "",
       "### Function Registration Rules",
       "1. **All exported functions must be registered** with `query()`, `mutation()`, `action()`, or `internalQuery()`/`internalMutation()`",
@@ -237,6 +242,7 @@ export async function POST(req: Request) {
       "   - \"Validator mismatch\" → Function args don't match schema, fix validators",
       "   - \"Index not found\" → Add index to schema.ts defineTable() call",
       "   - \"TypeScript error\" → Fix type errors in function code",
+      "   - \"[plugin:vite:import-analysis] Failed to resolve import './convex/_generated/...\" → wrong relative import path from `/src` (use `../convex/_generated/...` or compute correct `../../` depth)",
       "",
       "### Autonomous Repair Protocol",
       "When deployment fails:",
@@ -286,7 +292,7 @@ export async function POST(req: Request) {
       "}",
       "=======",
       "function App() {",
-      "  return <h1>Hello Huggable!</h1>",
+      "  return <h1>Hello Botflow!</h1>",
       "}",
       ">>>>>>> REPLACE",
       "```",
@@ -319,7 +325,7 @@ export async function POST(req: Request) {
       "function Footer() {",
       "  return (",
       '    <footer className="text-center text-sm text-muted-foreground py-4">',
-      "      © 2025 Huggable",
+      "      © 2025 Botflow",
       "    </footer>",
       "  );",
       "}",
@@ -385,11 +391,11 @@ export async function POST(req: Request) {
     // Determine selected model for project and ensure ownership
     let selectedModel:
       | "gpt-4.1"
-      | "claude-sonnet-4.5"
+      | "claude-sonnet-4.6"
       | "claude-haiku-4.5"
-      | "claude-opus-4.5"
+      | "claude-opus-4.6"
       | "kimi-k2-thinking-turbo"
-      | "fireworks-minimax-m2p1" = "gpt-4.1";
+      | "fireworks-minimax-m2p5" = "gpt-4.1";
     if (projectId) {
       const [proj] = await db
         .select()
@@ -401,16 +407,17 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (proj.model === "claude-sonnet-4.5") {
-        selectedModel = "claude-sonnet-4.5";
+      // Accept both 4.5 (legacy stored) and 4.6 (new) — always route to 4.6 API
+      if (proj.model === "claude-sonnet-4.6" || proj.model === "claude-sonnet-4.5") {
+        selectedModel = "claude-sonnet-4.6";
       } else if (proj.model === "claude-haiku-4.5") {
         selectedModel = "claude-haiku-4.5";
-      } else if (proj.model === "claude-opus-4.5") {
-        selectedModel = "claude-opus-4.5";
+      } else if (proj.model === "claude-opus-4.6" || proj.model === "claude-opus-4.5") {
+        selectedModel = "claude-opus-4.6";
       } else if (proj.model === "kimi-k2-thinking-turbo") {
         selectedModel = "kimi-k2-thinking-turbo";
-      } else if (proj.model === "fireworks-minimax-m2p1") {
-        selectedModel = "fireworks-minimax-m2p1";
+      } else if (proj.model === "fireworks-minimax-m2p5") {
+        selectedModel = "fireworks-minimax-m2p5";
       } else {
         selectedModel = "gpt-4.1";
       }
@@ -572,7 +579,7 @@ export async function POST(req: Request) {
         tools,
       });
       return result.toDataStreamResponse();
-    } else if (selectedModel === "fireworks-minimax-m2p1") {
+    } else if (selectedModel === "fireworks-minimax-m2p5") {
       const apiKey = settings?.fireworksApiKey;
       if (!apiKey) {
         return new Response(
@@ -582,7 +589,7 @@ export async function POST(req: Request) {
       }
       const fireworks = createFireworks({ apiKey });
       const result = await streamText({
-        model: fireworks("accounts/fireworks/models/minimax-m2p1"),
+        model: fireworks("accounts/fireworks/models/minimax-m2p5"),
         system:
           platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
@@ -590,26 +597,97 @@ export async function POST(req: Request) {
       });
       return result.toDataStreamResponse();
     } else {
-      const apiKey = settings?.anthropicApiKey;
-      if (!apiKey) {
+      // Resolve Anthropic credentials: OAuth token takes priority over API key
+      let anthropicToken: string | null = null;
+
+      if (settings?.claudeOAuthAccessToken) {
+        const expiresAt = settings.claudeOAuthExpiresAt;
+        const isExpired = expiresAt !== null && expiresAt !== undefined && Date.now() >= expiresAt;
+
+        if (!isExpired) {
+          anthropicToken = settings.claudeOAuthAccessToken;
+        } else if (settings.claudeOAuthRefreshToken) {
+          // Attempt token refresh
+          try {
+            const refreshRes = await fetch('https://console.anthropic.com/v1/oauth/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                grant_type: 'refresh_token',
+                client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+                refresh_token: settings.claudeOAuthRefreshToken,
+              }),
+            });
+            if (refreshRes.ok) {
+              const refreshed = await refreshRes.json() as {
+                access_token: string;
+                refresh_token?: string;
+                expires_in?: number;
+              };
+              const newExpiresAt = refreshed.expires_in
+                ? Date.now() + refreshed.expires_in * 1000 - 5 * 60 * 1000
+                : null;
+              // Update stored tokens
+              const { getDb } = await import('@/db');
+              const { userSettings: usTable } = await import('@/db/schema');
+              const { eq: eqFn } = await import('drizzle-orm');
+              const db = getDb();
+              await db.update(usTable).set({
+                claudeOAuthAccessToken: refreshed.access_token,
+                claudeOAuthRefreshToken: refreshed.refresh_token ?? settings.claudeOAuthRefreshToken,
+                claudeOAuthExpiresAt: newExpiresAt,
+                updatedAt: new Date(),
+              }).where(eqFn(usTable.userId, userId));
+              anthropicToken = refreshed.access_token;
+            }
+          } catch {
+            // Refresh failed, fall through to API key
+          }
+        }
+      }
+
+      if (!anthropicToken && settings?.anthropicApiKey) {
+        // Fall back to standard API key
+        const anthropic = createAnthropic({ apiKey: settings.anthropicApiKey });
+        const anthropicModelId =
+          selectedModel === "claude-haiku-4.5"
+            ? "claude-haiku-4-5-20251001"
+            : selectedModel === "claude-opus-4.6"
+              ? "claude-opus-4-6"
+              : "claude-sonnet-4-6";
+        const result = await streamText({
+          model: anthropic(anthropicModelId),
+          system: platform === "mobile" ? systemPromptMobile : systemPromptWeb,
+          messages: messages as CoreMessage[],
+          tools,
+        });
+        return result.toDataStreamResponse();
+      }
+
+      if (!anthropicToken) {
         return new Response(
-          JSON.stringify({ error: "Missing Anthropic API key" }),
+          JSON.stringify({ error: "Missing Anthropic credentials. Add an API key or connect via Claude Code OAuth in Settings." }),
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
-      const anthropic = createAnthropic({ apiKey });
+
+      // Use OAuth token — send as both x-api-key and Authorization: Bearer
+      // so the request works regardless of which auth method Anthropic checks
+      const anthropic = createAnthropic({
+        apiKey: anthropicToken,
+        headers: { Authorization: `Bearer ${anthropicToken}` },
+      });
       // Map UI model to Anthropic model identifier
       const anthropicModelId =
         selectedModel === "claude-haiku-4.5"
           ? "claude-haiku-4-5-20251001"
-          : selectedModel === "claude-opus-4.5"
-            ? "claude-opus-4-5-20251101"
-            : "claude-sonnet-4-5-20250929";
+          : selectedModel === "claude-opus-4.6"
+            ? "claude-opus-4-6"
+            : "claude-sonnet-4-6";
 
       const result = await streamText({
         model: anthropic(anthropicModelId),
-        system:
-          platform === "mobile" ? systemPromptMobile : systemPromptWeb,
+        system: platform === "mobile" ? systemPromptMobile : systemPromptWeb,
         messages: messages as CoreMessage[],
         tools,
       });
