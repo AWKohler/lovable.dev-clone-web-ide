@@ -41,6 +41,9 @@ dependencies:
   '@react-three/fiber':
     specifier: ^9.5.0
     version: 9.5.0(@types/react@19.2.7)(react-dom@19.1.0)(react@19.1.0)(three@0.182.0)
+  '@react-three/postprocessing':
+    specifier: ^3.0.4
+    version: 3.0.4(@react-three/fiber@9.5.0)(@types/three@0.182.0)(react@19.1.0)(three@0.182.0)
   '@sparticuz/chromium':
     specifier: ^143.0.0
     version: 143.0.0
@@ -104,6 +107,9 @@ dependencies:
   openai:
     specifier: ^6.15.0
     version: 6.15.0(zod@3.25.76)
+  postprocessing:
+    specifier: ^6.38.2
+    version: 6.38.3(three@0.182.0)
   puppeteer-core:
     specifier: ^24.34.0
     version: 24.34.0
@@ -1549,6 +1555,23 @@ packages:
     transitivePeerDependencies:
       - '@types/react'
       - immer
+    dev: false
+
+  /@react-three/postprocessing@3.0.4(@react-three/fiber@9.5.0)(@types/three@0.182.0)(react@19.1.0)(three@0.182.0):
+    resolution: {integrity: sha512-e4+F5xtudDYvhxx3y0NtWXpZbwvQ0x1zdOXWTbXMK6fFLVDd4qucN90YaaStanZGS4Bd5siQm0lGL/5ogf8iDQ==}
+    peerDependencies:
+      '@react-three/fiber': ^9.0.0
+      react: ^19.0
+      three: '>= 0.156.0'
+    dependencies:
+      '@react-three/fiber': 9.5.0(@types/react@19.2.7)(react-dom@19.1.0)(react@19.1.0)(three@0.182.0)
+      maath: 0.6.0(@types/three@0.182.0)(three@0.182.0)
+      n8ao: 1.10.1(postprocessing@6.38.3)(three@0.182.0)
+      postprocessing: 6.38.3(three@0.182.0)
+      react: 19.1.0
+      three: 0.182.0
+    transitivePeerDependencies:
+      - '@types/three'
     dev: false
 
   /@rtsao/scc@1.1.0:
@@ -4471,6 +4494,16 @@ packages:
       three: 0.182.0
     dev: false
 
+  /maath@0.6.0(@types/three@0.182.0)(three@0.182.0):
+    resolution: {integrity: sha512-dSb2xQuP7vDnaYqfoKzlApeRcR2xtN8/f7WV/TMAkBC8552TwTLtOO0JTcSygkYMjNDPoo6V01jTw/aPi4JrMw==}
+    peerDependencies:
+      '@types/three': '>=0.144.0'
+      three: '>=0.144.0'
+    dependencies:
+      '@types/three': 0.182.0
+      three: 0.182.0
+    dev: false
+
   /magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
     dependencies:
@@ -4577,6 +4610,16 @@ packages:
 
   /multipasta@0.2.7:
     resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
+    dev: false
+
+  /n8ao@1.10.1(postprocessing@6.38.3)(three@0.182.0):
+    resolution: {integrity: sha512-hhI1pC+BfOZBV1KMwynBrVlIm8wqLxj/abAWhF2nZ0qQKyzTSQa1QtLVS2veRiuoBQXojxobcnp0oe+PUoxf/w==}
+    peerDependencies:
+      postprocessing: '>=6.30.0'
+      three: '>=0.137'
+    dependencies:
+      postprocessing: 6.38.3(three@0.182.0)
+      three: 0.182.0
     dev: false
 
   /nanoid@3.3.11:
@@ -4915,6 +4958,14 @@ packages:
     engines: {node: '>=0.10.0'}
     dependencies:
       xtend: 4.0.2
+    dev: false
+
+  /postprocessing@6.38.3(three@0.182.0):
+    resolution: {integrity: sha512-5qCFp8j62nWL6sSVv/RKuHscQUIV+VMMgWeHLYZQEBpAk7G+r3jA3bSKON7gZjiuxdZ/F4PXj2Jc1oPh/7Eg+g==}
+    peerDependencies:
+      three: '>= 0.157.0 < 0.184.0'
+    dependencies:
+      three: 0.182.0
     dev: false
 
   /potpack@1.0.2:
