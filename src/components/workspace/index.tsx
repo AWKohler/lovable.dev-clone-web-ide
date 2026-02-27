@@ -356,7 +356,7 @@ export function Workspace({
     [isInstalled, runInstall, projectId],
   );
 
-  const stopDevServer = useCallback(async (_container?: WebContainer) => {
+  const stopDevServer = useCallback(async () => {
     try {
       console.log("🛑 Stopping dev server...");
       const res = await DevServerManager.stop();
@@ -371,7 +371,7 @@ export function Workspace({
     if (!webcontainer) return;
 
     if (isDevServerRunning) {
-      await stopDevServer(webcontainer);
+      await stopDevServer();
     } else {
       await startDevServer(webcontainer);
     }
@@ -413,7 +413,6 @@ export function Workspace({
           for (const entry of entries) {
             const fullPath =
               path === "/" ? `/${entry.name}` : `${path}/${entry.name}`;
-            const relativePath = fullPath.substring(1); // Remove leading slash
 
             // Skip excluded folders
             if (excludedFolders.includes(entry.name)) {
@@ -1419,7 +1418,7 @@ export default function RootLayout() {
                 githubRepoOwner={githubRepoOwner}
                 githubRepoName={githubRepoName}
                 githubDefaultBranch={githubDefaultBranch}
-                onRepoConnected={(owner, name, branch, _sha) => {
+                onRepoConnected={(owner, name, branch) => {
                   setGithubRepoOwner(owner);
                   setGithubRepoName(name);
                   setGithubDefaultBranch(branch);

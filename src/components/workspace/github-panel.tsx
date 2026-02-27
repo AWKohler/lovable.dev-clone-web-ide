@@ -441,6 +441,7 @@ export function GitHubPanel({
         {ghStatus?.connected && (
           <div className="flex items-center gap-1">
             {ghStatus.avatarUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={ghStatus.avatarUrl}
                 alt={ghStatus.username ?? ""}

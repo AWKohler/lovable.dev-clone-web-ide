@@ -23,14 +23,6 @@ interface ConvexDeploymentResponse {
   projectId: number;
 }
 
-interface ConvexCreateProjectResult {
-  project: ConvexProjectResponse;
-  prodDeployment: ConvexDeploymentResponse;
-}
-
-interface ConvexDeployKeyResponse {
-  accessToken: string;  // The deploy key to store
-}
 
 export class ConvexPlatformClient {
   private teamId: string;

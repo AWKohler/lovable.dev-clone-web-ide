@@ -562,7 +562,7 @@ export const WebContainerAgent = {
               }
             }
           }
-        } catch (err) {
+        } catch {
           // Skip directories we can't read
           continue;
         }
