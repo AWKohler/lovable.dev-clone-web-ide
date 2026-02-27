@@ -9,13 +9,12 @@ export const runtime = 'nodejs';
 
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-const REDIRECT_URI = `${APP_URL}/api/oauth/github/callback`;
 
 export async function GET(req: NextRequest) {
+  const origin = new URL(req.url).origin;
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.redirect(`${APP_URL}/sign-in`);
+    return NextResponse.redirect(`${origin}/sign-in`);
   }
 
   const { searchParams } = new URL(req.url);
@@ -32,7 +31,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!code) {
-    return NextResponse.redirect(`${APP_URL}${returnTo}?github_error=no_code`);
+    return NextResponse.redirect(`${origin}${returnTo}?github_error=no_code`);
   }
 
   try {
@@ -47,7 +46,6 @@ export async function GET(req: NextRequest) {
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
         code,
-        redirect_uri: REDIRECT_URI,
       }),
     });
 
@@ -55,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     if (!tokenData.access_token) {
       console.error('GitHub token exchange failed:', tokenData);
-      return NextResponse.redirect(`${APP_URL}${returnTo}?github_error=token_exchange`);
+      return NextResponse.redirect(`${origin}${returnTo}?github_error=token_exchange`);
     }
 
     // Fetch GitHub user info
@@ -90,9 +88,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.redirect(`${APP_URL}${returnTo}?github_connected=1`);
+    return NextResponse.redirect(`${origin}${returnTo}?github_connected=1`);
   } catch (e) {
     console.error('GitHub OAuth callback failed:', e);
-    return NextResponse.redirect(`${APP_URL}${returnTo}?github_error=server`);
+    return NextResponse.redirect(`${origin}${returnTo}?github_error=server`);
   }
 }

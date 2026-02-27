@@ -5,8 +5,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-const REDIRECT_URI = `${APP_URL}/api/oauth/github/callback`;
 const SCOPES = 'repo user:email';
 
 export async function GET(req: NextRequest) {
@@ -26,7 +24,6 @@ export async function GET(req: NextRequest) {
 
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
       scope: SCOPES,
       state,
     });
