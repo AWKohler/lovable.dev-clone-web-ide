@@ -59,8 +59,17 @@ export async function GET(request: Request) {
 
         console.log(`Convex backend provisioned for project ${project.id}: ${convex.deployUrl}`);
       } catch (error) {
-        // Log error but don't fail project creation
-        // User can still use the IDE, just without Convex backend
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg.includes('ProjectQuotaReached')) {
+          // Quota reached — redirect with a visible error rather than silently
+          // creating a project with no backend.
+          console.error('Convex quota reached, cannot create project:', msg);
+          const errUrl = new URL('/', request.url);
+          errUrl.searchParams.set('error', 'convex_quota');
+          return NextResponse.redirect(errUrl);
+        }
+        // For other provisioning errors, allow the project to be created without
+        // a Convex backend — the deploy route will retry provisioning on first deploy.
         console.error('Failed to provision Convex backend:', error);
       }
     }

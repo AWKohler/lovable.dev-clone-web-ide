@@ -540,6 +540,28 @@ export function Workspace({
           setIsDevServerRunning(newPreviews.length > 0);
         });
 
+        // Write .env file so Vite always has env vars regardless of who starts the server.
+        // This is intentionally done on every workspace load so the file is always fresh.
+        const writeEnvFile = async () => {
+          try {
+            const envResponse = await fetch(`/api/projects/${projectId}/env`);
+            if (!envResponse.ok) return;
+            const envData = await envResponse.json();
+            const lines: string[] = [];
+            for (const env of envData.systemEnvVars || []) {
+              lines.push(`${env.key}=${env.value}`);
+            }
+            for (const env of envData.envVars || []) {
+              lines.push(`${env.key}=${env.value}`);
+            }
+            if (lines.length > 0) {
+              await container.fs.writeFile("/.env", lines.join("\n") + "\n");
+            }
+          } catch (e) {
+            console.warn("Failed to write .env file:", e);
+          }
+        };
+
         // Always restore from saved state first; fall back to template if none (suppress autosave during init)
         console.log(`🔍 Loading project state for: ${projectId}`);
         const savedState =
@@ -568,6 +590,7 @@ export function Workspace({
 
           if (restored) {
             console.log("✅ Restored from cloud backup");
+            await writeEnvFile();
             await refreshFileTree(container);
             setIsLoading(false);
             setHydrating(false);
@@ -844,6 +867,9 @@ export default function RootLayout() {
           }
         }
 
+
+        // Write .env with system/user env vars so Vite picks them up on every server start
+        await writeEnvFile();
 
         // Get initial file list
         await refreshFileTree(container);

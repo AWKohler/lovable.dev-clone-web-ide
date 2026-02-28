@@ -64,9 +64,14 @@ export async function POST(
         }
       } catch (provisionErr) {
         const msg = provisionErr instanceof Error ? provisionErr.message : String(provisionErr);
+        const isQuota = msg.includes('ProjectQuotaReached');
         return NextResponse.json(
-          { error: `Failed to provision Convex backend: ${msg}` },
-          { status: 500 }
+          {
+            error: isQuota
+              ? 'Convex project quota reached (20/20). Delete unused projects or upgrade your Convex plan at https://www.convex.dev/plans to continue.'
+              : `Failed to provision Convex backend: ${msg}`,
+          },
+          { status: isQuota ? 402 : 500 }
         );
       }
     }
