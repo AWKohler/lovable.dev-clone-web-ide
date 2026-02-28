@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { provisionConvexBackend, getConvexPlatformClient } from '@/lib/convex-platform';
 
 const FLY_WORKER_URL = "https://fly-shy-feather-7138.fly.dev";
 const WORKER_AUTH_TOKEN = "dev-secret";
@@ -32,13 +33,42 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // Auto-provision Convex backend if missing (handles projects created before
+    // Convex integration or where provisioning silently failed at creation time).
     if (!project.convexDeployKey) {
-      return NextResponse.json(
-        {
-          error: 'Project does not have a Convex deploy key - ensure Convex backend was provisioned'
-        },
-        { status: 400 }
-      );
+      try {
+        let deployKey: string;
+
+        if (project.convexDeploymentId) {
+          // Deployment exists but key was lost — create a new deploy key
+          const client = getConvexPlatformClient();
+          deployKey = await client.createDeployKey(project.convexDeploymentId);
+          await db.update(projects)
+            .set({ convexDeployKey: deployKey, updatedAt: new Date() })
+            .where(eq(projects.id, projectId));
+          project.convexDeployKey = deployKey;
+        } else {
+          // No Convex backend at all — provision one now
+          const convexProjectName = `ide-${project.id.slice(0, 8)}`;
+          const convex = await provisionConvexBackend(convexProjectName);
+          await db.update(projects)
+            .set({
+              convexProjectId: convex.projectId,
+              convexDeploymentId: convex.deploymentId,
+              convexDeployUrl: convex.deployUrl,
+              convexDeployKey: convex.deployKey,
+              updatedAt: new Date(),
+            })
+            .where(eq(projects.id, projectId));
+          project.convexDeployKey = convex.deployKey;
+        }
+      } catch (provisionErr) {
+        const msg = provisionErr instanceof Error ? provisionErr.message : String(provisionErr);
+        return NextResponse.json(
+          { error: `Failed to provision Convex backend: ${msg}` },
+          { status: 500 }
+        );
+      }
     }
 
     // 3. Get the zip blob from request body
