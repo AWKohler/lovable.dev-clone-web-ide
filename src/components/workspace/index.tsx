@@ -1484,6 +1484,7 @@ export default function RootLayout() {
                       }
                       selected={sidebarTab}
                       onSelect={(v) => setSidebarTab(v as "files" | "search" | "env")}
+                      stretch
                     />
                   </div>
                   <div className="flex-1 overflow-auto modern-scrollbar">

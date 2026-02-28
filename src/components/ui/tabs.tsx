@@ -10,19 +10,21 @@ interface TabsProps<T extends string> {
   selected: T;
   onSelect: (value: T) => void;
   className?: string;
+  stretch?: boolean;
 }
 
-export function Tabs<T extends string>({ options, selected, onSelect, className }: TabsProps<T>) {
+export function Tabs<T extends string>({ options, selected, onSelect, className, stretch }: TabsProps<T>) {
   const single = options.length === 1;
+  const expand = single || stretch;
   return (
-    <div className={cn("flex rounded-lg p-1 border border-border", single && "w-full", className)}>
+    <div className={cn("flex rounded-lg p-1 border border-border", expand && "w-full", className)}>
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onSelect(option.value)}
           className={cn(
             "px-4 py-1 text-sm font-medium rounded-md transition-all duration-200",
-            single && "flex-1",
+            expand && "flex-1",
             selected === option.value
               ? "bg-accent text-white shadow-sm font-bold"
               : "text-muted hover:text-fg hover:bg-elevated/60"
