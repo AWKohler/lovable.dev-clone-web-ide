@@ -75,23 +75,24 @@ export async function POST(
     }
 
     // Build manifest and form data for Cloudflare Direct Upload
-    // Manifest maps "/<path>" to a content hash
+    // Manifest maps path (no leading slash) to content hash
     // Each file is appended as a blob with the hash as the form key
     const manifest: Record<string, string> = {};
-    const fileEntries: Array<{ hash: string; buffer: Buffer; path: string }> = [];
+    const fileEntries: Array<{ hash: string; buffer: Buffer }> = [];
 
     for (const [filePath, base64Content] of Object.entries(body.files)) {
       const buffer = Buffer.from(base64Content, 'base64');
       const hash = createHash('sha256').update(buffer).digest('hex');
-      // Cloudflare expects paths starting with /
-      const normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+      // Cloudflare manifest paths must NOT have a leading slash
+      const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
       manifest[normalizedPath] = hash;
-      fileEntries.push({ hash, buffer, path: normalizedPath });
+      fileEntries.push({ hash, buffer });
     }
 
     // Build multipart form
     const formData = new FormData();
     formData.append('manifest', JSON.stringify(manifest));
+    formData.append('branch', 'main');
 
     // Deduplicate by hash — same content only uploaded once
     const seen = new Set<string>();
