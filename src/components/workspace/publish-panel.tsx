@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { WebContainer } from "@webcontainer/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import JSZip from "jszip";
 import {
   Globe,
   ExternalLink,
@@ -31,34 +30,35 @@ interface PublishPanelProps {
   onUnpublished: () => void;
 }
 
-const IGNORED_DIRS = new Set([
-  "node_modules", ".git", ".next", "dist", "build", ".cache",
-  "__pycache__", ".venv", "venv", "coverage", ".nyc_output",
-]);
-
-async function readDistFiles(
+/** Recursively read all files under a directory as base64 strings */
+async function readDistFilesAsBase64(
   container: WebContainer,
   basePath: string,
-  zip: JSZip,
-  relativeTo: string
-) {
+  relativeTo: string,
+  acc: Record<string, string> = {}
+): Promise<Record<string, string>> {
   const entries = await container.fs.readdir(basePath, { withFileTypes: true });
   for (const entry of entries) {
-    if (IGNORED_DIRS.has(entry.name)) continue;
     const fullPath = basePath === "/" ? `/${entry.name}` : `${basePath}/${entry.name}`;
     const relPath = fullPath.slice(relativeTo.length);
     if (entry.isDirectory()) {
-      await readDistFiles(container, fullPath, zip, relativeTo);
+      await readDistFilesAsBase64(container, fullPath, relativeTo, acc);
     } else {
       try {
         // Read as binary (Uint8Array) to handle images, fonts, wasm etc.
-        const content = await container.fs.readFile(fullPath);
-        zip.file(relPath, content);
+        const bytes = await container.fs.readFile(fullPath);
+        // Convert Uint8Array to base64
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        acc[relPath] = btoa(binary);
       } catch {
         // skip unreadable
       }
     }
   }
+  return acc;
 }
 
 export function PublishPanel({
@@ -171,9 +171,8 @@ export function PublishPanel({
         return;
       }
 
-      // 2. Zip dist/
+      // 2. Read dist/ files as base64
       setStatusText("Packaging...");
-      const zip = new JSZip();
 
       // Check if dist/ exists
       try {
@@ -187,15 +186,20 @@ export function PublishPanel({
         return;
       }
 
-      await readDistFiles(webcontainer, "/dist", zip, "/dist");
+      const files = await readDistFilesAsBase64(webcontainer, "/dist", "/dist");
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
+      if (Object.keys(files).length === 0) {
+        setState("error");
+        setErrorOutput("Build produced an empty dist/ directory.");
+        return;
+      }
 
       // 3. Upload
       setStatusText("Uploading to Cloudflare...");
       const res = await fetch(`/api/projects/${projectId}/publish`, {
         method: "POST",
-        body: zipBlob,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
       });
 
       if (!res.ok) {

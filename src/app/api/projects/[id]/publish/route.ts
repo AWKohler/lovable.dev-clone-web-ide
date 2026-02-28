@@ -3,10 +3,20 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { createHash } from 'crypto';
 
-const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!;
-const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!;
-const CF_API = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects`;
+function getCfConfig() {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !apiToken) {
+    throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set');
+  }
+  return {
+    accountId,
+    apiToken,
+    apiBase: `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`,
+  };
+}
 
 async function getProjectWithAuth(userId: string, projectId: string) {
   const db = getDb();
@@ -31,14 +41,15 @@ export async function POST(
     const project = await getProjectWithAuth(userId, projectId);
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
+    const cf = getCfConfig();
     const projectName = project.cloudflareProjectName ?? `bf-${projectId.slice(0, 8)}`;
 
     // Create Pages project if first publish
     if (!project.cloudflareProjectName) {
-      const createRes = await fetch(CF_API, {
+      const createRes = await fetch(cf.apiBase, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${CF_API_TOKEN}`,
+          'Authorization': `Bearer ${cf.apiToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -57,20 +68,43 @@ export async function POST(
       }
     }
 
-    // Upload deployment as zip
-    const zipBlob = await request.blob();
-    if (zipBlob.size === 0) {
-      return NextResponse.json({ error: 'No deployment package provided' }, { status: 400 });
+    // Parse the file map from request body: { files: { "/path": "base64data" } }
+    const body = await request.json() as { files: Record<string, string> };
+    if (!body.files || Object.keys(body.files).length === 0) {
+      return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    const formData = new FormData();
-    formData.append('manifest', JSON.stringify({}));
-    formData.append('file', zipBlob, 'dist.zip');
+    // Build manifest and form data for Cloudflare Direct Upload
+    // Manifest maps "/<path>" to a content hash
+    // Each file is appended as a blob with the hash as the form key
+    const manifest: Record<string, string> = {};
+    const fileEntries: Array<{ hash: string; buffer: Buffer; path: string }> = [];
 
-    const deployRes = await fetch(`${CF_API}/${projectName}/deployments`, {
+    for (const [filePath, base64Content] of Object.entries(body.files)) {
+      const buffer = Buffer.from(base64Content, 'base64');
+      const hash = createHash('sha256').update(buffer).digest('hex');
+      // Cloudflare expects paths starting with /
+      const normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+      manifest[normalizedPath] = hash;
+      fileEntries.push({ hash, buffer, path: normalizedPath });
+    }
+
+    // Build multipart form
+    const formData = new FormData();
+    formData.append('manifest', JSON.stringify(manifest));
+
+    // Deduplicate by hash — same content only uploaded once
+    const seen = new Set<string>();
+    for (const entry of fileEntries) {
+      if (seen.has(entry.hash)) continue;
+      seen.add(entry.hash);
+      formData.append(entry.hash, new Blob([new Uint8Array(entry.buffer)]), entry.hash);
+    }
+
+    const deployRes = await fetch(`${cf.apiBase}/${projectName}/deployments`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${CF_API_TOKEN}`,
+        'Authorization': `Bearer ${cf.apiToken}`,
       },
       body: formData,
     });
@@ -131,10 +165,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Not published' }, { status: 400 });
     }
 
+    const cf = getCfConfig();
+
     // Delete Cloudflare Pages project
-    await fetch(`${CF_API}/${project.cloudflareProjectName}`, {
+    await fetch(`${cf.apiBase}/${project.cloudflareProjectName}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${CF_API_TOKEN}` },
+      headers: { 'Authorization': `Bearer ${cf.apiToken}` },
     });
 
     // Clear DB columns
