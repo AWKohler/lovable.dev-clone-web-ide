@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects, userSettings, pendingGitCommits } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
+import type { ConflictFile } from '../pull/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,11 +40,34 @@ async function ghFetch(
   });
 }
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function fetchBlobContent(
+  repoPath: string,
+  blobSha: string,
+  token: string
+): Promise<string | null> {
+  const res = await ghFetch(`${repoPath}/git/blobs/${blobSha}`, token);
+  if (!res.ok) return null;
+  const blob = await res.json() as { content: string; encoding: string };
+  if (blob.encoding === 'base64') {
+    return Buffer.from(blob.content.replace(/\n/g, ''), 'base64').toString('utf-8');
+  }
+  return null;
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Optionally read body for { force: boolean }
+    let force = false;
+    try {
+      const body = await req.json() as { force?: boolean };
+      force = Boolean(body?.force);
+    } catch {
+      // No body or not JSON — that's fine
+    }
 
     const db = getDb();
     const [proj] = await db.select().from(projects).where(eq(projects.id, id));
@@ -73,7 +97,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'No pending commits to push' }, { status: 400 });
     }
 
-    // Get current HEAD SHA
+    // Get current HEAD SHA on remote
     const refRes = await ghFetch(`${repoPath}/git/ref/heads/${branch}`, token);
     let currentSha: string;
 
@@ -81,25 +105,97 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       const refData = await refRes.json() as { object: { sha: string } };
       currentSha = refData.object.sha;
     } else if (refRes.status === 404) {
-      // Branch doesn't exist yet — check if repo is empty
-      // Try to get default branch from repo info
+      // Branch doesn't exist yet — repo may be empty
       const repoRes = await ghFetch(repoPath, token);
       if (!repoRes.ok) {
         return NextResponse.json({ error: 'Failed to access repository' }, { status: 500 });
       }
-      // Repo might be empty; we'll create the first commit without a parent
       currentSha = '';
     } else {
       return NextResponse.json({ error: 'Failed to get branch ref' }, { status: 500 });
     }
 
+    // ── Divergence check ──────────────────────────────────────────────────────
+    // If remote has advanced beyond our tracked base, we have a conflict (unless force)
+    if (!force && proj.githubLastPushedSha && currentSha && currentSha !== proj.githubLastPushedSha) {
+      // Get what changed on remote since our last push
+      const compareRes = await ghFetch(
+        `${repoPath}/compare/${proj.githubLastPushedSha}...${currentSha}`,
+        token
+      );
+
+      if (compareRes.ok) {
+        const compareData = await compareRes.json() as {
+          files?: Array<{ filename: string; status: string; sha: string }>;
+        };
+        const remoteFiles = compareData.files ?? [];
+
+        // Fetch remote file content at current remote HEAD
+        const remoteChanges: Record<string, string | null> = {};
+        for (const file of remoteFiles) {
+          const path = '/' + file.filename;
+          if (file.status === 'removed') {
+            remoteChanges[path] = null;
+          } else {
+            remoteChanges[path] = await fetchBlobContent(repoPath, file.sha, token);
+          }
+        }
+
+        // Files touched by pending commits (with / prefix)
+        const pendingFilePaths = new Set<string>();
+        for (const commit of pending) {
+          const snapshot = commit.filesSnapshot as Record<string, string | null>;
+          for (const p of Object.keys(snapshot)) {
+            pendingFilePaths.add(p.startsWith('/') ? p : '/' + p);
+          }
+        }
+
+        // Determine conflicts: remote-changed files that also appear in pending commits
+        const conflicts: ConflictFile[] = [];
+        const nonConflictedRemote: Record<string, string | null> = {};
+
+        for (const [path, remoteContent] of Object.entries(remoteChanges)) {
+          if (pendingFilePaths.has(path)) {
+            // Find this file's content in the latest pending commit that touches it
+            let localContent: string | null = null;
+            for (let i = pending.length - 1; i >= 0; i--) {
+              const snapshot = pending[i].filesSnapshot as Record<string, string | null>;
+              if (path in snapshot) {
+                localContent = snapshot[path];
+                break;
+              }
+              // Try without leading slash (defensive)
+              const noSlash = path.slice(1);
+              if (noSlash in snapshot) {
+                localContent = snapshot[noSlash];
+                break;
+              }
+            }
+            conflicts.push({ path, remote: remoteContent, local: localContent });
+          } else {
+            nonConflictedRemote[path] = remoteContent;
+          }
+        }
+
+        return NextResponse.json(
+          {
+            conflict: true,
+            remoteSha: currentSha,
+            remoteChanges,
+            conflicts,
+            nonConflictedRemote,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // ── Apply pending commits to GitHub ───────────────────────────────────────
     let latestSha = currentSha;
 
-    // Apply each pending commit sequentially
     for (const commit of pending) {
       const snapshot = commit.filesSnapshot as Record<string, string | null>;
 
-      // Build tree entries: create blobs for each file
       const treeEntries: Array<{
         path: string;
         mode: string;
@@ -112,14 +208,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
         if (content === null) {
           // Deleted file
-          treeEntries.push({
-            path: cleanPath,
-            mode: '100644',
-            type: 'blob',
-            sha: null,
-          });
+          treeEntries.push({ path: cleanPath, mode: '100644', type: 'blob', sha: null });
         } else {
-          // Create blob
           const blobRes = await ghFetch(`${repoPath}/git/blobs`, token, 'POST', {
             content: Buffer.from(content, 'utf-8').toString('base64'),
             encoding: 'base64',
@@ -131,21 +221,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           }
 
           const blob = await blobRes.json() as GitHubBlob;
-          treeEntries.push({
-            path: cleanPath,
-            mode: '100644',
-            type: 'blob',
-            sha: blob.sha,
-          });
+          treeEntries.push({ path: cleanPath, mode: '100644', type: 'blob', sha: blob.sha });
         }
       }
 
       if (treeEntries.length === 0) continue;
 
       // Create tree
-      const treeBody: { base_tree?: string; tree: typeof treeEntries } = {
-        tree: treeEntries,
-      };
+      const treeBody: { base_tree?: string; tree: typeof treeEntries } = { tree: treeEntries };
       if (latestSha) treeBody.base_tree = latestSha;
 
       const treeRes = await ghFetch(`${repoPath}/git/trees`, token, 'POST', treeBody);
@@ -158,11 +241,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       const tree = await treeRes.json() as GitHubTree;
 
       // Create commit
-      const commitBody: {
-        message: string;
-        tree: string;
-        parents?: string[];
-      } = {
+      const commitBody: { message: string; tree: string; parents?: string[] } = {
         message: commit.message,
         tree: tree.sha,
       };
@@ -179,13 +258,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       latestSha = newCommit.sha;
     }
 
-    // Update the branch ref
+    // Update the branch ref (force if requested)
     if (latestSha && latestSha !== currentSha) {
       const updateRefRes = await ghFetch(
         `${repoPath}/git/refs/heads/${branch}`,
         token,
         'PATCH',
-        { sha: latestSha, force: false }
+        { sha: latestSha, force }
       );
 
       if (!updateRefRes.ok && updateRefRes.status !== 422) {

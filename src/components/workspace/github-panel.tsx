@@ -18,7 +18,11 @@ import {
   Lock,
   Globe,
   Upload,
+  ArrowDown,
 } from "lucide-react";
+import { ConflictModal } from "./conflict-modal";
+import type { ConflictFile } from "./conflict-modal";
+import { downloadRepoToWebContainer } from "@/lib/github";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +63,13 @@ interface GitHubPanelProps {
   onRepoDisconnected: () => void;
 }
 
+interface ConflictState {
+  mode: "pull" | "push";
+  conflicts: ConflictFile[];
+  nonConflictedRemote: Record<string, string | null>;
+  remoteSha: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const IGNORED_DIRS = new Set([
@@ -91,6 +102,21 @@ async function readAllFiles(
     // skip unreadable dirs
   }
   return acc;
+}
+
+async function applyFilesToWebContainer(
+  container: WebContainer,
+  files: Record<string, string | null>
+) {
+  for (const [path, content] of Object.entries(files)) {
+    if (content === null) {
+      await container.fs.rm(path).catch(() => {});
+    } else {
+      const dir = path.substring(0, path.lastIndexOf("/"));
+      if (dir) await container.fs.mkdir(dir, { recursive: true }).catch(() => {});
+      await container.fs.writeFile(path, content);
+    }
+  }
 }
 
 function slugify(str: string) {
@@ -199,6 +225,11 @@ export function GitHubPanel({
   const [commitMsg, setCommitMsg] = useState("");
   const [committing, setCommitting] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [pulling, setPulling] = useState(false);
+
+  // ── Conflict modal state ───────────────────────────────────────────────────
+  const [conflictState, setConflictState] = useState<ConflictState | null>(null);
+  const [conflictLoading, setConflictLoading] = useState(false);
 
   const hasRepo = Boolean(githubRepoOwner && githubRepoName);
 
@@ -294,7 +325,6 @@ export function GitHubPanel({
         return;
       }
       const repo = await res.json() as GitHubRepo;
-      // Connect project to repo
       await fetch(`/api/projects/${projectId}/github`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -327,7 +357,6 @@ export function GitHubPanel({
   }, [showExistingRepos, existingRepos]);
 
   const handleConnectExisting = useCallback(async (repo: GitHubRepo) => {
-    // Fetch head SHA for the repo
     let headSha: string | null = null;
     try {
       const branchRes = await fetch(
@@ -359,7 +388,6 @@ export function GitHubPanel({
     if (!commitMsg.trim() || !webcontainer || !gitStatus) return;
     setCommitting(true);
     try {
-      // Build snapshot of only changed files
       const allFiles = await readAllFiles(webcontainer);
       const changedFiles: Record<string, string | null> = {};
       for (const p of [...(gitStatus.added ?? []), ...(gitStatus.modified ?? [])]) {
@@ -384,18 +412,40 @@ export function GitHubPanel({
   }, [commitMsg, webcontainer, gitStatus, projectId, fetchGitStatus]);
 
   // ── Push ───────────────────────────────────────────────────────────────────
-  const handlePush = useCallback(async () => {
+  const handlePush = useCallback(async (force = false) => {
     setPushing(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/git/push`, { method: "POST" });
+      const res = await fetch(`/api/projects/${projectId}/git/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+
+      if (res.status === 409) {
+        const data = await res.json() as {
+          conflict: boolean;
+          remoteSha: string;
+          conflicts: ConflictFile[];
+          nonConflictedRemote: Record<string, string | null>;
+        };
+        setConflictState({
+          mode: "push",
+          conflicts: data.conflicts,
+          nonConflictedRemote: data.nonConflictedRemote,
+          remoteSha: data.remoteSha,
+        });
+        return;
+      }
+
       if (res.ok) {
-        const data = await res.json() as { newSha: string; repoUrl: string };
+        const data = await res.json() as { newSha: string };
         onRepoConnected(
           githubRepoOwner!,
           githubRepoName!,
           githubDefaultBranch ?? "main",
           data.newSha
         );
+        setConflictState(null);
         await fetchGitStatus();
       } else {
         const err = await res.json() as { error: string };
@@ -406,12 +456,154 @@ export function GitHubPanel({
     }
   }, [projectId, onRepoConnected, githubRepoOwner, githubRepoName, githubDefaultBranch, fetchGitStatus]);
 
+  // ── Pull ───────────────────────────────────────────────────────────────────
+  const handlePull = useCallback(async () => {
+    if (!webcontainer || !hasRepo) return;
+    setPulling(true);
+    try {
+      const localFiles = await readAllFiles(webcontainer);
+      const res = await fetch(`/api/projects/${projectId}/git/pull`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pull", localFiles }),
+      });
+
+      const data = await res.json() as {
+        nothingToPull?: boolean;
+        remoteSha?: string;
+        remoteChanges?: Record<string, string | null>;
+        conflicts?: ConflictFile[];
+        nonConflictedRemote?: Record<string, string | null>;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        alert(data.error ?? "Failed to pull from GitHub");
+        return;
+      }
+
+      if (data.nothingToPull) {
+        // Show brief feedback
+        alert("Already up to date.");
+        return;
+      }
+
+      const conflicts = data.conflicts ?? [];
+      const nonConflictedRemote = data.nonConflictedRemote ?? {};
+      const remoteSha = data.remoteSha!;
+
+      if (conflicts.length === 0) {
+        // No conflicts — apply all remote changes directly
+        await applyFilesToWebContainer(webcontainer, data.remoteChanges ?? {});
+        await fetch(`/api/projects/${projectId}/git/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "force-update-sha", remoteSha }),
+        });
+        onRepoConnected(
+          githubRepoOwner!,
+          githubRepoName!,
+          githubDefaultBranch ?? "main",
+          remoteSha
+        );
+        await fetchGitStatus();
+      } else {
+        setConflictState({ mode: "pull", conflicts, nonConflictedRemote, remoteSha });
+      }
+    } finally {
+      setPulling(false);
+    }
+  }, [webcontainer, hasRepo, projectId, githubRepoOwner, githubRepoName, githubDefaultBranch, onRepoConnected, fetchGitStatus]);
+
+  // ── Force pull (download full remote tree) ────────────────────────────────
+  const handleForcePull = useCallback(async () => {
+    if (!webcontainer || !conflictState) return;
+    setConflictLoading(true);
+    try {
+      await downloadRepoToWebContainer(webcontainer, {
+        owner: githubRepoOwner!,
+        repo: githubRepoName!,
+        ref: githubDefaultBranch ?? "main",
+      });
+      await fetch(`/api/projects/${projectId}/git/pull`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "force-update-sha", remoteSha: conflictState.remoteSha }),
+      });
+      onRepoConnected(
+        githubRepoOwner!,
+        githubRepoName!,
+        githubDefaultBranch ?? "main",
+        conflictState.remoteSha
+      );
+      setConflictState(null);
+      await fetchGitStatus();
+    } finally {
+      setConflictLoading(false);
+    }
+  }, [webcontainer, conflictState, githubRepoOwner, githubRepoName, githubDefaultBranch, projectId, onRepoConnected, fetchGitStatus]);
+
+  // ── Conflict resolution: complete merge (pull or push) ────────────────────
+  const handleConflictComplete = useCallback(
+    async (resolutions: Record<string, string | null>) => {
+      if (!webcontainer || !conflictState) return;
+      setConflictLoading(true);
+      try {
+        const { mode, nonConflictedRemote, remoteSha } = conflictState;
+
+        // Merged files = resolved conflicts + non-conflicting remote changes
+        const mergedFiles: Record<string, string | null> = {
+          ...nonConflictedRemote,
+          ...resolutions,
+        };
+
+        // Apply all merged content to WebContainer
+        await applyFilesToWebContainer(webcontainer, mergedFiles);
+
+        if (mode === "pull") {
+          // Update tracked SHA
+          await fetch(`/api/projects/${projectId}/git/pull`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "force-update-sha", remoteSha }),
+          });
+          onRepoConnected(
+            githubRepoOwner!,
+            githubRepoName!,
+            githubDefaultBranch ?? "main",
+            remoteSha
+          );
+          setConflictState(null);
+          await fetchGitStatus();
+        } else {
+          // push mode: commit the merge and force push
+          const commitRes = await fetch(`/api/projects/${projectId}/git/commit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: "Merge remote changes",
+              files: mergedFiles,
+            }),
+          });
+
+          if (commitRes.ok) {
+            await handlePush(true); // force push
+          }
+        }
+      } finally {
+        setConflictLoading(false);
+      }
+    },
+    [webcontainer, conflictState, projectId, githubRepoOwner, githubRepoName, githubDefaultBranch, onRepoConnected, fetchGitStatus, handlePush]
+  );
+
   if (!isOpen) return null;
 
   const pendingCount = gitStatus?.pendingCommits?.length ?? 0;
   const hasChanges = gitStatus?.hasChanges ?? false;
   const canCommit = hasChanges && commitMsg.trim().length > 0 && !committing;
   const canPush = pendingCount > 0 && !pushing;
+  const canPull = !pulling && !pushing;
 
   const panel = (
     <div
@@ -606,6 +798,19 @@ export function GitHubPanel({
                 </span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handlePull}
+                  disabled={!canPull}
+                  className="p-1 rounded hover:bg-soft/60 transition-colors text-muted hover:text-foreground disabled:opacity-40"
+                  title="Pull from remote"
+                >
+                  {pulling ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <ArrowDown size={12} />
+                  )}
+                </button>
                 <a
                   href={`https://github.com/${githubRepoOwner}/${githubRepoName}`}
                   target="_blank"
@@ -721,7 +926,7 @@ export function GitHubPanel({
           <Button
             size="sm"
             className="flex-1"
-            onClick={handlePush}
+            onClick={() => handlePush(false)}
             disabled={!canPush}
           >
             {pushing ? (
@@ -736,7 +941,23 @@ export function GitHubPanel({
     </div>
   );
 
-  return createPortal(panel, document.body);
+  return (
+    <>
+      {createPortal(panel, document.body)}
+      {conflictState && (
+        <ConflictModal
+          mode={conflictState.mode}
+          conflicts={conflictState.conflicts}
+          nonConflictedRemote={conflictState.nonConflictedRemote}
+          onForcePull={conflictState.mode === "pull" ? handleForcePull : undefined}
+          onForcePush={conflictState.mode === "push" ? () => handlePush(true) : undefined}
+          onComplete={handleConflictComplete}
+          onCancel={() => setConflictState(null)}
+          isLoading={conflictLoading || pushing}
+        />
+      )}
+    </>
+  );
 }
 
 // ── Inline GitHub SVG (custom, minimal) ───────────────────────────────────
