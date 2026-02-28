@@ -28,6 +28,7 @@ export async function GET(
   // it's already stored on the project at provisioning time.
   return NextResponse.json({
     deploymentUrl: proj.convexDeployUrl,
+    deploymentName: proj.convexDeploymentId,
     adminKey: proj.convexDeployKey,
   });
 }

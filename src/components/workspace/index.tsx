@@ -1292,9 +1292,19 @@ export default function RootLayout() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            {currentView === "database" && (
+              <button
+                onClick={() => window.open(`/workspace/${projectId}/database`, "_blank")}
+                className="flex items-center gap-1.5 text-sm text-muted hover:text-fg border border-border rounded-md px-3 py-1 bolt-hover"
+                title="Open database in new tab"
+              >
+                <ArrowUpRight size={14} />
+                Open in new tab
+              </button>
+            )}
             {currentView === "code" ? (
               <></>
-            ) : (
+            ) : currentView === "preview" ? (
               <>
                 {previews.length > 1 && (
                   <select
@@ -1367,7 +1377,7 @@ export default function RootLayout() {
                   </button>
                 </div>
               </>
-            )}
+            ) : null}
 
             {/* Cloud Sync Status Indicator */}
             <div className="text-xs text-muted flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated">
