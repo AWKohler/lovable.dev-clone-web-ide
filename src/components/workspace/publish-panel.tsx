@@ -143,13 +143,28 @@ export function PublishPanel({
 
       let buildOutput = "";
       const reader = buildProcess.output.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buildOutput += value;
-      }
+      let reading = true;
+
+      // Drain output concurrently — output stream and proc.exit can deadlock
+      // if you await one fully before the other
+      const drain = (async () => {
+        try {
+          while (reading) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) buildOutput += value;
+          }
+        } catch {
+          // ignore
+        } finally {
+          try { reader.releaseLock(); } catch {}
+        }
+      })();
 
       const exitCode = await buildProcess.exit;
+      reading = false;
+      try { await reader.cancel(); } catch {}
+      await drain;
       if (exitCode !== 0) {
         setState("error");
         setErrorOutput(buildOutput || "Build failed with no output");
