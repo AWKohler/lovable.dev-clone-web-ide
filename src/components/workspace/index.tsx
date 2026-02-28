@@ -16,6 +16,7 @@ import { GitHubPanel } from "./github-panel";
 import { CodeEditor } from "./code-editor";
 import { TerminalTabs } from "./terminal-tabs";
 import { Preview } from "./preview";
+import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabOption } from "@/components/ui/tabs";
 import {
@@ -37,7 +38,7 @@ import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import "@/lib/debug-storage"; // Make debug utilities available in console
 
-type WorkspaceView = "code" | "preview";
+type WorkspaceView = "code" | "preview" | "database";
 
 interface WorkspaceProps {
   projectId: string;
@@ -1214,6 +1215,7 @@ export default function RootLayout() {
                   // }`,
                 },
                 { value: "code", text: "Code" },
+                { value: "database", text: "Database" },
               ] as TabOption<WorkspaceView>[]
             }
             selected={currentView}
@@ -1513,6 +1515,14 @@ export default function RootLayout() {
               <TerminalTabs webcontainer={webcontainer} />
             </div>
           </div>
+          {/* Database View */}
+          {currentView === "database" && (
+            <div className="absolute inset-0 pb-2.5 pr-2.5">
+              <div className="w-full h-full rounded-xl border border-border overflow-hidden">
+                <ConvexDashboard projectId={projectId} />
+              </div>
+            </div>
+          )}
           {/* Preview View - Always mounted but conditionally visible */}
           <div
             className={cn(

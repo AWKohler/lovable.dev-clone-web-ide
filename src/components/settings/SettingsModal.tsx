@@ -219,7 +219,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl max-h-[90vh] flex flex-col"
+        className="w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl max-h-[90vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
