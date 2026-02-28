@@ -1343,8 +1343,13 @@ export default function RootLayout() {
                   <button
                     onClick={() => {
                       const p = previews[activePreviewIndex];
-                      if (p)
-                        window.open(p.baseUrl + (previewPath || "/"), "_blank");
+                      if (p) {
+                        const previewUrl = p.baseUrl + (previewPath || "/");
+                        window.open(
+                          `/preview-popup?url=${encodeURIComponent(previewUrl)}`,
+                          "_blank"
+                        );
+                      }
                     }}
                     className="text-muted hover:text-fg"
                     title="Open in new tab"

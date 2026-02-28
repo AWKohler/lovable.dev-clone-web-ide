@@ -114,10 +114,13 @@ export function Preview({
 
   const openInNewTab = useCallback(() => {
     if (activePreview?.baseUrl) {
-      // Simple approach matching bolt.diy exactly
-      window.open(activePreview.baseUrl, "_blank");
+      const previewUrl = activePreview.baseUrl + (currentPath ?? internalPath ?? "/");
+      window.open(
+        `/preview-popup?url=${encodeURIComponent(previewUrl)}`,
+        "_blank"
+      );
     }
-  }, [activePreview]);
+  }, [activePreview, currentPath, internalPath]);
 
   const handlePathChange = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
