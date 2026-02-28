@@ -86,6 +86,26 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Delete Cloudflare Pages project if it exists
+    if (proj.cloudflareProjectName) {
+      try {
+        const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+        const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+        if (CF_ACCOUNT_ID && CF_API_TOKEN) {
+          await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${proj.cloudflareProjectName}`,
+            {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${CF_API_TOKEN}` },
+            }
+          );
+          console.log(`Cloudflare Pages project deleted for project ${resolvedParams.id}`);
+        }
+      } catch (error) {
+        console.error('Failed to delete Cloudflare Pages project:', error);
+      }
+    }
+
     // Delete the project (cascades to chat sessions, messages, and env vars)
     await db.delete(projects).where(eq(projects.id, resolvedParams.id));
 

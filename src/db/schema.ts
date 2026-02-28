@@ -23,6 +23,9 @@ export const projects = pgTable('projects', {
   githubRepoName: text('github_repo_name'),           // Repository name
   githubDefaultBranch: text('github_default_branch').default('main'), // Default branch
   githubLastPushedSha: text('github_last_pushed_sha'), // Last commit SHA pushed to GitHub
+  // Cloudflare Pages deployment
+  cloudflareProjectName: text('cloudflare_project_name'),
+  cloudflareDeploymentUrl: text('cloudflare_deployment_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

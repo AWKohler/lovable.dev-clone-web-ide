@@ -13,6 +13,7 @@ import { EnvPanel } from "./env-panel";
 import { downloadRepoToWebContainer } from "@/lib/github";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { GitHubPanel } from "./github-panel";
+import { PublishPanel } from "./publish-panel";
 import { CodeEditor } from "./code-editor";
 import { TerminalTabs } from "./terminal-tabs";
 import { Preview } from "./preview";
@@ -93,6 +94,12 @@ export function Workspace({
   const [githubDefaultBranch, setGithubDefaultBranch] = useState<string>("main");
   const [githubPanelOpen, setGithubPanelOpen] = useState(false);
   const githubBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Cloudflare Pages publish state
+  const [cloudflareProjectName, setCloudflareProjectName] = useState<string | null>(null);
+  const [cloudflareDeploymentUrl, setCloudflareDeploymentUrl] = useState<string | null>(null);
+  const [publishPanelOpen, setPublishPanelOpen] = useState(false);
+  const publishBtnRef = useRef<HTMLButtonElement | null>(null);
   const searchParams = useSearchParams();
 
   // Auto-open GitHub panel when returning from OAuth
@@ -142,6 +149,8 @@ export function Workspace({
           if (proj?.githubRepoOwner) setGithubRepoOwner(proj.githubRepoOwner);
           if (proj?.githubRepoName) setGithubRepoName(proj.githubRepoName);
           if (proj?.githubDefaultBranch) setGithubDefaultBranch(proj.githubDefaultBranch);
+          if (proj?.cloudflareProjectName) setCloudflareProjectName(proj.cloudflareProjectName);
+          if (proj?.cloudflareDeploymentUrl) setCloudflareDeploymentUrl(proj.cloudflareDeploymentUrl);
         }
       } catch (e) {
         console.warn("Failed to load project data", e);
@@ -1473,16 +1482,40 @@ export default function RootLayout() {
                 }}
               />
             </div>
-            <Button
-              variant="default"
-              size="sm"
-              className="font-bold text-sm"
-              onClick={() => {
-                // TODO: implement publish flow
-              }}
-            >
-              Publish
-            </Button>
+            <div className="relative">
+              <Button
+                ref={publishBtnRef}
+                variant="default"
+                size="sm"
+                className={cn(
+                  "font-bold text-sm",
+                  cloudflareDeploymentUrl && "bg-green-600 hover:bg-green-700 text-white"
+                )}
+                onClick={() => setPublishPanelOpen((v) => !v)}
+              >
+                {cloudflareDeploymentUrl ? "Published" : "Publish"}
+              </Button>
+              {cloudflareDeploymentUrl && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 border-2 border-surface pointer-events-none" />
+              )}
+              <PublishPanel
+                projectId={projectId}
+                webcontainer={webcontainer}
+                isOpen={publishPanelOpen}
+                onClose={() => setPublishPanelOpen(false)}
+                anchorRef={publishBtnRef}
+                cloudflareProjectName={cloudflareProjectName}
+                cloudflareDeploymentUrl={cloudflareDeploymentUrl}
+                onPublished={(name, url) => {
+                  setCloudflareProjectName(name);
+                  setCloudflareDeploymentUrl(url);
+                }}
+                onUnpublished={() => {
+                  setCloudflareProjectName(null);
+                  setCloudflareDeploymentUrl(null);
+                }}
+              />
+            </div>
           </div>
         </div>
 
