@@ -3,7 +3,6 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { getConvexPlatformClient } from '@/lib/convex-platform';
 
 export async function GET(
   _req: NextRequest,
@@ -21,20 +20,14 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  if (!proj.convexDeploymentId || !proj.convexDeployUrl) {
+  if (!proj.convexDeployUrl || !proj.convexDeployKey) {
     return NextResponse.json({ error: 'No Convex backend for this project' }, { status: 404 });
   }
 
-  try {
-    const client = getConvexPlatformClient();
-    const adminKey = await client.createAdminKey(proj.convexDeploymentId);
-
-    return NextResponse.json({
-      deploymentUrl: proj.convexDeployUrl,
-      adminKey,
-    });
-  } catch (err) {
-    console.error('Failed to generate Convex admin key:', err);
-    return NextResponse.json({ error: 'Failed to generate database session' }, { status: 500 });
-  }
+  // The deploy key returned by Convex's create_deploy_key endpoint is an admin key —
+  // it's already stored on the project at provisioning time.
+  return NextResponse.json({
+    deploymentUrl: proj.convexDeployUrl,
+    adminKey: proj.convexDeployKey,
+  });
 }

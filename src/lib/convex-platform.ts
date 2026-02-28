@@ -118,31 +118,6 @@ export class ConvexPlatformClient {
   }
 
   /**
-   * Create an admin key for a deployment (used for embedding the dashboard)
-   * @param deploymentName - The deployment name (e.g., "happy-otter-123")
-   * @returns The admin key string
-   */
-  async createAdminKey(deploymentName: string): Promise<string> {
-    const url = `${CONVEX_API_BASE}/deployments/${deploymentName}/admin_keys`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ name: 'platform-dashboard-session' }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create Convex admin key: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json();
-    // Response shape: { key: "..." } or { adminKey: "..." }
-    const key = result.key || result.adminKey || result.accessToken;
-    if (!key) throw new Error(`Unexpected admin key response: ${JSON.stringify(result)}`);
-    return key;
-  }
-
-  /**
    * Delete a Convex project and all its deployments
    * @param projectId - The Convex project ID
    */
