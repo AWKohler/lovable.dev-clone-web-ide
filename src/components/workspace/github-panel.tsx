@@ -195,6 +195,8 @@ export function GitHubPanel({
 }: GitHubPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, right: 0 });
+  // Keep a ref so the mousedown closure always reads the latest conflictState
+  const conflictStateRef = useRef<ConflictState | null>(null);
 
   // ── Compute position from anchor button ───────────────────────────────────
   useEffect(() => {
@@ -292,10 +294,15 @@ export function GitHubPanel({
     if (isOpen && hasRepo) fetchGitStatus();
   }, [isOpen, hasRepo, fetchGitStatus]);
 
+  // Keep conflictStateRef in sync so the mousedown closure below is never stale
+  conflictStateRef.current = conflictState;
+
   // ── Close on outside click ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
+      // Don't interfere while the conflict modal is open
+      if (conflictStateRef.current) return;
       if (
         panelRef.current &&
         !panelRef.current.contains(e.target as Node) &&
@@ -596,8 +603,6 @@ export function GitHubPanel({
     },
     [webcontainer, conflictState, projectId, githubRepoOwner, githubRepoName, githubDefaultBranch, onRepoConnected, fetchGitStatus, handlePush]
   );
-
-  if (!isOpen) return null;
 
   const pendingCount = gitStatus?.pendingCommits?.length ?? 0;
   const hasChanges = gitStatus?.hasChanges ?? false;
@@ -943,7 +948,7 @@ export function GitHubPanel({
 
   return (
     <>
-      {createPortal(panel, document.body)}
+      {isOpen && createPortal(panel, document.body)}
       {conflictState && (
         <ConflictModal
           mode={conflictState.mode}
