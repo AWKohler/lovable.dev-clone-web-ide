@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { hash as blake3hash } from 'blake3';
+import { createHash } from 'crypto';
 import { extname, basename } from 'path';
 
 function getCfConfig() {
@@ -41,7 +41,7 @@ async function cfFetch<T = unknown>(path: string, apiToken: string, options: { b
 
 function computeHash(base64Content: string, filename: string): string {
   const extension = extname(basename(filename)).substring(1); // e.g. "html", "js"
-  return blake3hash(base64Content + extension).toString('hex').slice(0, 32);
+  return createHash('md5').update(base64Content + extension).digest('hex');
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {

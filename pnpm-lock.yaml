@@ -68,9 +68,6 @@ dependencies:
   ai:
     specifier: ^4.0.18
     version: 4.3.19(react@19.1.0)(zod@3.25.76)
-  blake3:
-    specifier: ^2.1.0
-    version: 2.1.7
   canvas:
     specifier: ^3.2.0
     version: 3.2.0
@@ -2565,11 +2562,6 @@ packages:
       buffer: 5.7.1
       inherits: 2.0.4
       readable-stream: 3.6.2
-    dev: false
-
-  /blake3@2.1.7:
-    resolution: {integrity: sha512-5d+TdKJvju96IyEaGJ0eO6CHbckWi+NBrCezGYM/WsnI3R03aLL2TWfsuZSh1rs0fTv/L3ps/r0vykjYurcIwA==}
-    requiresBuild: true
     dev: false
 
   /brace-expansion@1.1.12:
