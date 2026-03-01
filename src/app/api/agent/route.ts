@@ -702,12 +702,127 @@ export async function POST(req: Request) {
         );
       }
 
-      // Use OAuth token — send as both x-api-key and Authorization: Bearer
-      // so the request works regardless of which auth method Anthropic checks
+      // Use OAuth token with custom fetch to handle Anthropic OAuth requirements:
+      // - Authorization: Bearer instead of x-api-key
+      // - Required anthropic-beta headers for OAuth
+      // - ?beta=true query param on /v1/messages
+      // - Tool name prefixing/stripping (mcp_ prefix required by OAuth endpoint)
+      const TOOL_PREFIX = "mcp_";
+      const oauthToken = anthropicToken;
+
       const anthropic = createAnthropic({
-        apiKey: anthropicToken,
-        headers: { Authorization: `Bearer ${anthropicToken}` },
+        apiKey: "oauth-placeholder",
+        fetch: async (requestInput: RequestInfo | URL, init?: RequestInit) => {
+          // Build headers from existing init
+          const requestHeaders = new Headers();
+          if (init?.headers) {
+            if (init.headers instanceof Headers) {
+              init.headers.forEach((value, key) => requestHeaders.set(key, value));
+            } else if (Array.isArray(init.headers)) {
+              for (const [key, value] of init.headers) {
+                if (value !== undefined) requestHeaders.set(key, String(value));
+              }
+            } else {
+              for (const [key, value] of Object.entries(init.headers)) {
+                if (value !== undefined) requestHeaders.set(key, String(value));
+              }
+            }
+          }
+
+          // Set OAuth auth headers — Bearer token instead of x-api-key
+          requestHeaders.set("authorization", `Bearer ${oauthToken}`);
+          requestHeaders.delete("x-api-key");
+
+          // Merge required anthropic-beta flags with any existing ones
+          const existingBeta = requestHeaders.get("anthropic-beta") || "";
+          const betaList = existingBeta.split(",").map(b => b.trim()).filter(Boolean);
+          const requiredBetas = ["oauth-2025-04-20", "interleaved-thinking-2025-05-14"];
+          const mergedBetas = [...new Set([...requiredBetas, ...betaList])].join(",");
+          requestHeaders.set("anthropic-beta", mergedBetas);
+          requestHeaders.set("user-agent", "claude-cli/2.1.2 (external, cli)");
+
+          // Prefix tool names with mcp_ in the request body (required by OAuth endpoint)
+          let body = init?.body;
+          if (body && typeof body === "string") {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.tools && Array.isArray(parsed.tools)) {
+                parsed.tools = parsed.tools.map((t: Record<string, unknown>) => ({
+                  ...t,
+                  name: t.name ? `${TOOL_PREFIX}${t.name}` : t.name,
+                }));
+              }
+              if (parsed.messages && Array.isArray(parsed.messages)) {
+                parsed.messages = parsed.messages.map((msg: Record<string, unknown>) => {
+                  if (msg.content && Array.isArray(msg.content)) {
+                    msg.content = msg.content.map((block: Record<string, unknown>) => {
+                      if (block.type === "tool_use" && block.name) {
+                        return { ...block, name: `${TOOL_PREFIX}${block.name}` };
+                      }
+                      return block;
+                    });
+                  }
+                  return msg;
+                });
+              }
+              body = JSON.stringify(parsed);
+            } catch {
+              // ignore parse errors
+            }
+          }
+
+          // Add ?beta=true to the /v1/messages endpoint URL
+          let finalInput: RequestInfo | URL = requestInput;
+          try {
+            const url = requestInput instanceof URL
+              ? new URL(requestInput.toString())
+              : new URL(typeof requestInput === "string" ? requestInput : (requestInput as Request).url);
+            if (url.pathname === "/v1/messages" && !url.searchParams.has("beta")) {
+              url.searchParams.set("beta", "true");
+              finalInput = requestInput instanceof Request
+                ? new Request(url.toString(), requestInput)
+                : url;
+            }
+          } catch {
+            // ignore URL parse errors
+          }
+
+          const response = await fetch(finalInput, {
+            ...init,
+            body,
+            headers: requestHeaders,
+          });
+
+          // Strip mcp_ prefix from tool names in the streaming response
+          if (response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            const encoder = new TextEncoder();
+
+            const stream = new ReadableStream({
+              async pull(controller) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  controller.close();
+                  return;
+                }
+                let text = decoder.decode(value, { stream: true });
+                text = text.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
+                controller.enqueue(encoder.encode(text));
+              },
+            });
+
+            return new Response(stream, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
+          }
+
+          return response;
+        },
       });
+
       // Map UI model to Anthropic model identifier
       const anthropicModelId =
         selectedModel === "claude-haiku-4.5"
