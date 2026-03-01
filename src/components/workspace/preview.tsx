@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +40,178 @@ const DEVICE_SIZES = {
   desktop: { name: "Desktop", width: "100%", height: "100%", icon: Monitor },
   tablet: { name: "Tablet", width: 768, height: 1024, icon: Tablet },
   mobile: { name: "Mobile", width: 375, height: 667, icon: Smartphone },
+  responsive: { name: "Responsive", width: "100%", height: "100%", icon: Monitor },
 };
+
+const RESPONSIVE_VIEWPORTS = [
+  { key: "desktop", label: "Desktop", width: 1440, height: 900 },
+  { key: "tablet", label: "Tablet", width: 768, height: 1024 },
+  { key: "mobile", label: "Mobile", width: 375, height: 812 },
+] as const;
+
+/* ──────────────────────────────────────────
+   Responsive Canvas – Figma-style multi-viewport view
+   ────────────────────────────────────────── */
+function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(0.35);
+  const [pan, setPan] = useState({ x: 40, y: 40 });
+  const isPanning = useRef(false);
+  const lastMouse = useRef({ x: 0, y: 0 });
+
+  // Wheel to zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom((z) => Math.min(1.5, Math.max(0.1, z - e.deltaY * 0.001)));
+    } else {
+      // Pan on regular scroll
+      setPan((p) => ({
+        x: p.x - e.deltaX,
+        y: p.y - e.deltaY,
+      }));
+    }
+  }, []);
+
+  // Mouse drag to pan
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only pan on middle-click or when clicking the canvas background
+    if (e.button === 1 || (e.target as HTMLElement).dataset.canvas === "bg") {
+      e.preventDefault();
+      isPanning.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning.current) return;
+    const dx = e.clientX - lastMouse.current.x;
+    const dy = e.clientY - lastMouse.current.y;
+    lastMouse.current = { x: e.clientX, y: e.clientY };
+    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isPanning.current = false;
+  }, []);
+
+  // Each iframe is rendered at full device width, with a tall height to show the full page,
+  // then CSS-scaled down to fit within the canvas.
+  const IFRAME_HEIGHT = 3000; // tall enough to show full page content
+  const GAP = 60; // gap between frames in canvas-pixels
+
+  const frames = useMemo(() => RESPONSIVE_VIEWPORTS.map((vp) => ({
+    ...vp,
+    iframeHeight: IFRAME_HEIGHT,
+  })), []);
+
+  return (
+    <div
+      ref={canvasRef}
+      className="w-full h-full overflow-hidden relative select-none"
+      style={{
+        background: `radial-gradient(circle, var(--color-border) 1px, transparent 1px)`,
+        backgroundSize: "24px 24px",
+        cursor: isPanning.current ? "grabbing" : "default",
+      }}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      data-canvas="bg"
+    >
+      {/* Zoom controls */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-2 bg-elevated/95 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 shadow-sm">
+        <button
+          onClick={() => setZoom((z) => Math.max(0.1, z - 0.05))}
+          className="text-muted hover:text-fg text-sm font-medium w-5 h-5 flex items-center justify-center"
+        >
+          -
+        </button>
+        <span className="text-xs text-muted min-w-[40px] text-center tabular-nums">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          onClick={() => setZoom((z) => Math.min(1.5, z + 0.05))}
+          className="text-muted hover:text-fg text-sm font-medium w-5 h-5 flex items-center justify-center"
+        >
+          +
+        </button>
+        <div className="w-px h-3 bg-border" />
+        <button
+          onClick={() => { setZoom(0.35); setPan({ x: 40, y: 40 }); }}
+          className="text-xs text-muted hover:text-fg"
+        >
+          Reset
+        </button>
+      </div>
+
+      {/* Pannable & zoomable surface */}
+      <div
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+        }}
+        className="flex items-start"
+        data-canvas="bg"
+      >
+        {frames.map((frame, i) => (
+          <div
+            key={frame.key}
+            style={{
+              marginLeft: i === 0 ? 0 : GAP,
+              width: frame.width,
+            }}
+            className="flex-shrink-0"
+          >
+            {/* Top bar – thicker accent border */}
+            <div
+              className="flex items-center justify-between px-3 py-2 rounded-t-lg"
+              style={{
+                background: "var(--color-accent)",
+                borderTop: "3px solid var(--color-accent)",
+                borderLeft: "2px solid var(--color-accent)",
+                borderRight: "2px solid var(--color-accent)",
+              }}
+            >
+              <span className="text-accent-foreground text-sm font-semibold">
+                {frame.label}
+              </span>
+              <span className="text-accent-foreground/70 text-xs tabular-nums">
+                {frame.width} x {frame.height}
+              </span>
+            </div>
+            {/* Iframe container */}
+            <div
+              className="overflow-hidden bg-white"
+              style={{
+                width: frame.width,
+                height: frame.iframeHeight,
+                borderLeft: "2px solid var(--color-accent)",
+                borderRight: "2px solid var(--color-accent)",
+                borderBottom: "2px solid var(--color-accent)",
+                borderRadius: "0 0 8px 8px",
+              }}
+            >
+              <iframe
+                src={iframeUrl || undefined}
+                style={{
+                  width: frame.width,
+                  height: frame.iframeHeight,
+                  border: "none",
+                }}
+                title={`${frame.label} Preview`}
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
+                allow="cross-origin-isolated"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function Preview({
   previews,
@@ -188,7 +359,7 @@ export function Preview({
   const effectiveLandscape = isLandscape ?? internalLandscape;
 
   const getIframeStyles = useCallback(() => {
-    if (effectiveDevice === "desktop") {
+    if (effectiveDevice === "desktop" || effectiveDevice === "responsive") {
       return { width: "100%", height: "100%" };
     }
 
@@ -901,6 +1072,10 @@ export function Preview({
             </div>
           </div>
         </div>
+      ) : effectiveDevice === "responsive" ? (
+        <div className="flex-1 overflow-hidden relative">
+          <ResponsiveCanvas iframeUrl={iframeUrl} />
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center overflow-auto relative">
           <div
@@ -943,7 +1118,8 @@ export function Preview({
 
       {/* Device Info */}
       {platform === "web" &&
-        (selectedDevice ?? internalDevice) !== "desktop" && (
+        (selectedDevice ?? internalDevice) !== "desktop" &&
+        (selectedDevice ?? internalDevice) !== "responsive" && (
           <div className="px-4 py-2 bg-soft border-t border-border text-center text-xs text-muted">
             {DEVICE_SIZES[selectedDevice ?? internalDevice].name} •{" "}
             {(isLandscape ?? internalLandscape) ? "Landscape" : "Portrait"} •{" "}

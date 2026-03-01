@@ -15,6 +15,7 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { GitHubPanel } from "./github-panel";
 import { PublishPanel } from "./publish-panel";
 import { CodeEditor } from "./code-editor";
+import { ImageViewer } from "./image-viewer";
 import { TerminalTabs } from "./terminal-tabs";
 import { Preview } from "./preview";
 import { ConvexDashboard } from "@/components/convex/ConvexDashboard";
@@ -31,6 +32,7 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  AppWindow,
   Github,
   Download,
 } from "lucide-react";
@@ -58,6 +60,8 @@ export function Workspace({
   >({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
+  const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
+  const [imageByteLength, setImageByteLength] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<"files" | "search" | "env">("files");
@@ -68,7 +72,7 @@ export function Workspace({
   // Preview UI state lifted to combine headers
   const [previewPath, setPreviewPath] = useState<string>("/");
   const [previewDevice, setPreviewDevice] = useState<
-    "desktop" | "tablet" | "mobile"
+    "desktop" | "tablet" | "mobile" | "responsive"
   >("desktop");
   const [previewLandscape] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
@@ -201,6 +205,93 @@ export function Workspace({
     [getFileStructure],
   );
 
+  const handleFileDrop = useCallback(
+    async (targetFolder: string, transfer: DataTransfer) => {
+      if (!webcontainer) return;
+
+      const TEXT_EXTENSIONS = new Set([
+        'txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'htm', 'css',
+        'scss', 'sass', 'less', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp',
+        'h', 'hpp', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'toml', 'xml', 'svg',
+        'csv', 'env', 'gitignore', 'eslintrc', 'prettierrc', 'sql', 'graphql',
+        'gql', 'vue', 'svelte', 'astro', 'php', 'swift', 'kt', 'dart', 'r',
+        'tex', 'conf', 'ini', 'cfg', 'log', 'lock', 'editorconfig',
+      ]);
+
+      const isText = (name: string, mime: string) => {
+        if (mime.startsWith('text/')) return true;
+        if (['application/json', 'application/javascript', 'application/xml', 'image/svg+xml'].includes(mime)) return true;
+        return TEXT_EXTENSIONS.has(name.split('.').pop()?.toLowerCase() ?? '');
+      };
+
+      const writeFile = async (path: string, file: File) => {
+        const dir = path.substring(0, path.lastIndexOf('/'));
+        if (dir && dir !== '/') {
+          await webcontainer.fs.mkdir(dir, { recursive: true }).catch(() => {});
+        }
+        const buf = await file.arrayBuffer();
+        if (isText(file.name, file.type)) {
+          await webcontainer.fs.writeFile(path, new TextDecoder().decode(buf));
+        } else {
+          await webcontainer.fs.writeFile(path, new Uint8Array(buf));
+        }
+      };
+
+      const readAllEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>
+        new Promise((resolve, reject) => {
+          const all: FileSystemEntry[] = [];
+          const readBatch = () =>
+            reader.readEntries((batch) => {
+              if (batch.length === 0) resolve(all);
+              else { all.push(...batch); readBatch(); }
+            }, reject);
+          readBatch();
+        });
+
+      const processEntry = async (entry: FileSystemEntry, base: string): Promise<void> => {
+        const path = base ? `${base}/${entry.name}` : `/${entry.name}`;
+        if (entry.isFile) {
+          const file = await new Promise<File>((res, rej) =>
+            (entry as FileSystemFileEntry).file(res, rej)
+          );
+          await writeFile(path, file);
+        } else if (entry.isDirectory) {
+          await webcontainer.fs.mkdir(path, { recursive: true }).catch(() => {});
+          const entries = await readAllEntries((entry as FileSystemDirectoryEntry).createReader());
+          for (const child of entries) await processEntry(child, path);
+        }
+      };
+
+      try {
+        const base = targetFolder === '/' ? '' : targetFolder;
+
+        if (transfer.items.length > 0) {
+          for (const item of Array.from(transfer.items)) {
+            if (item.kind !== 'file') continue;
+            const entry = item.webkitGetAsEntry?.();
+            if (entry) {
+              await processEntry(entry, base);
+            } else {
+              const file = item.getAsFile();
+              if (file) await writeFile(`${base}/${file.name}`, file);
+            }
+          }
+        } else {
+          for (const file of Array.from(transfer.files)) {
+            await writeFile(`${base}/${file.name}`, file);
+          }
+        }
+
+        await refreshFileTree(webcontainer);
+        toast({ title: 'Files imported', description: `Dropped into ${targetFolder === '/' ? 'project root' : targetFolder}` });
+      } catch (err) {
+        console.error('File drop failed:', err);
+        toast({ title: 'Import failed', description: 'Could not write dropped files' });
+      }
+    },
+    [webcontainer, refreshFileTree, toast],
+  );
+
   const handleSaveFile = useCallback(async () => {
     if (!webcontainer || !selectedFile) return;
 
@@ -219,19 +310,51 @@ export function Workspace({
     }
   }, [webcontainer, selectedFile, fileContent, projectId, refreshFileTree]);
 
+  const IMAGE_EXTENSIONS = new Set([
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif', 'tiff', 'tif',
+  ]);
+  const IMAGE_MIME: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+    ico: 'image/x-icon', avif: 'image/avif', tiff: 'image/tiff', tif: 'image/tiff',
+  };
+
   const handleFileSelect = useCallback(
     async (filePath: string) => {
       if (!webcontainer || files[filePath]?.type !== "file") return;
 
-      try {
-        const content = await webcontainer.fs.readFile(filePath, "utf8");
-        setSelectedFile(filePath);
-        setFileContent(content);
-        setHasUnsavedChanges(false);
-      } catch (error) {
-        console.error("Failed to read file:", error);
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+
+      // Revoke any previous blob URL to avoid memory leaks
+      setImageBlobUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+      setImageByteLength(undefined);
+
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        try {
+          const buf = await webcontainer.fs.readFile(filePath); // returns Uint8Array
+          const mime = IMAGE_MIME[ext] ?? 'application/octet-stream';
+          const blob = new Blob([buf.buffer as ArrayBuffer], { type: mime });
+          const url = URL.createObjectURL(blob);
+          setSelectedFile(filePath);
+          setFileContent('');
+          setHasUnsavedChanges(false);
+          setImageBlobUrl(url);
+          setImageByteLength(buf.byteLength);
+        } catch (error) {
+          console.error("Failed to read image:", error);
+        }
+      } else {
+        try {
+          const content = await webcontainer.fs.readFile(filePath, "utf8");
+          setSelectedFile(filePath);
+          setFileContent(content);
+          setHasUnsavedChanges(false);
+        } catch (error) {
+          console.error("Failed to read file:", error);
+        }
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [webcontainer, files],
   );
 
@@ -1367,7 +1490,9 @@ export default function RootLayout() {
                           ? "tablet"
                           : prev === "tablet"
                             ? "mobile"
-                            : "desktop",
+                            : prev === "mobile"
+                              ? "responsive"
+                              : "desktop",
                       )
                     }
                     className="text-muted hover:text-fg"
@@ -1376,6 +1501,7 @@ export default function RootLayout() {
                     {previewDevice === "desktop" && <Monitor size={16} />}
                     {previewDevice === "tablet" && <Tablet size={16} />}
                     {previewDevice === "mobile" && <Smartphone size={16} />}
+                    {previewDevice === "responsive" && <AppWindow size={16} />}
                   </button>
                   <span className="text-muted text-sm select-none">/</span>
                   <input
@@ -1552,6 +1678,7 @@ export default function RootLayout() {
                         files={files}
                         selectedFile={selectedFile}
                         onFileSelect={handleFileSelect}
+                        onFileDrop={handleFileDrop}
                       />
                     ) : sidebarTab === "search" ? (
                       <FileSearch
@@ -1570,12 +1697,20 @@ export default function RootLayout() {
               )}
               <div className="flex-1 min-h-0 relative">
                 <div className="absolute inset-0 bg-elevated/90 backdrop-blur-sm">
-                  <CodeEditor
-                    value={fileContent}
-                    onChange={handleContentChange}
-                    language={getLanguageFromFilename(selectedFile || "")}
-                    filename={selectedFile}
-                  />
+                  {imageBlobUrl ? (
+                    <ImageViewer
+                      src={imageBlobUrl}
+                      filename={selectedFile ?? ''}
+                      byteLength={imageByteLength}
+                    />
+                  ) : (
+                    <CodeEditor
+                      value={fileContent}
+                      onChange={handleContentChange}
+                      language={getLanguageFromFilename(selectedFile || "")}
+                      filename={selectedFile}
+                    />
+                  )}
                 </div>
               </div>
             </div>
