@@ -51,27 +51,8 @@ const RESPONSIVE_VIEWPORTS = [
 
 /* ──────────────────────────────────────────
    Responsive Canvas – Figma-style multi-viewport view
-
-   Strategy: each viewport is rendered via a CSS-transform trick.
-   - The iframe is set to the device's REAL viewport dimensions
-     (e.g. 1440×900) so media-queries and `vh` units behave correctly.
-   - The iframe content is then scaled to 1:1 (no visual scaling) but
-     its *container* is sized to show the full scrollable content by
-     measuring scrollHeight after load and expanding the visible area.
-   - We achieve "full page" by rendering the iframe at deviceWidth × scrollHeight
-     BUT using a clip technique: the iframe is placed inside a container whose
-     height equals scrollHeight, and the iframe itself is set to
-     width=deviceWidth, height=scrollHeight with scrolling="no".
-     To preserve correct `vh`, we inject a tiny style override via srcdoc proxy.
-
-   Simpler fallback approach (used here):
-   - Render iframe at deviceWidth × scrollHeight (measured after load)
-   - Use scrolling="no" so no scrollbar ever appears
-   - Accept that `100vh` = scrollHeight inside the iframe. For most
-     real-world sites this is fine because sections use min-height: 100vh
-     (hero sections just become taller, rest of the page is unaffected).
-   - After load, we try to read the actual scrollHeight from contentDocument
-     and resize to exactly fit. If cross-origin blocks us, we use a generous default.
+   Each iframe uses its standard viewport dimensions so
+   media-queries and vh units behave correctly.
    ────────────────────────────────────────── */
 function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -79,12 +60,6 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
   const [pan, setPan] = useState({ x: 40, y: 40 });
   const isPanning = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
-  const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([null, null, null]);
-
-  // Track measured content height per viewport; start with viewport height as default
-  const [frameHeights, setFrameHeights] = useState<number[]>(
-    RESPONSIVE_VIEWPORTS.map((vp) => vp.height)
-  );
 
   // Wheel to zoom (Ctrl/Cmd+scroll) or pan (regular scroll)
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -99,7 +74,6 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
     }
   }, []);
 
-  // Mouse drag to pan (middle-click or drag on background)
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.target as HTMLElement).dataset.canvas === "bg") {
       e.preventDefault();
@@ -119,56 +93,6 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
   const handleMouseUp = useCallback(() => {
     isPanning.current = false;
   }, []);
-
-  // After iframe loads, try to measure actual content scrollHeight
-  const measureHeight = useCallback((index: number) => {
-    const iframe = iframeRefs.current[index];
-    if (!iframe) return;
-
-    try {
-      const doc = iframe.contentDocument;
-      if (doc) {
-        const scrollH = doc.documentElement.scrollHeight;
-        if (scrollH && scrollH > 100) {
-          setFrameHeights((prev) => {
-            if (prev[index] === scrollH) return prev;
-            const next = [...prev];
-            next[index] = scrollH;
-            return next;
-          });
-          return;
-        }
-      }
-    } catch {
-      // Cross-origin – can't access contentDocument
-    }
-
-    // Fallback: use a generous default proportional to width
-    // Taller for narrower viewports (content reflows and becomes longer)
-    const vp = RESPONSIVE_VIEWPORTS[index];
-    const fallback = Math.round(vp.width * 3.5);
-    setFrameHeights((prev) => {
-      if (prev[index] === fallback) return prev;
-      const next = [...prev];
-      next[index] = fallback;
-      return next;
-    });
-  }, []);
-
-  const handleIframeLoad = useCallback(
-    (index: number) => {
-      // Measure immediately
-      measureHeight(index);
-      // And again after a short delay (some content loads async)
-      setTimeout(() => measureHeight(index), 1500);
-    },
-    [measureHeight],
-  );
-
-  // Re-measure when URL changes
-  useEffect(() => {
-    setFrameHeights(RESPONSIVE_VIEWPORTS.map((vp) => vp.height));
-  }, [iframeUrl]);
 
   const GAP = 60;
 
@@ -226,65 +150,56 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
         className="flex items-start"
         data-canvas="bg"
       >
-        {RESPONSIVE_VIEWPORTS.map((vp, i) => {
-          const contentH = frameHeights[i];
-          return (
+        {RESPONSIVE_VIEWPORTS.map((vp, i) => (
+          <div
+            key={vp.key}
+            style={{ marginLeft: i === 0 ? 0 : GAP, width: vp.width }}
+            className="flex-shrink-0"
+          >
+            {/* Top bar */}
             <div
-              key={vp.key}
-              style={{ marginLeft: i === 0 ? 0 : GAP, width: vp.width }}
-              className="flex-shrink-0"
+              className="flex items-center justify-between px-4 py-2"
+              style={{
+                background: "var(--color-accent)",
+                borderTop: "3px solid var(--color-accent)",
+                borderLeft: "2px solid var(--color-accent)",
+                borderRight: "2px solid var(--color-accent)",
+              }}
             >
-              {/* Top bar */}
-              <div
-                className="flex items-center justify-between px-4 py-2 rounded-t-lg"
-                style={{
-                  background: "var(--color-accent)",
-                  borderTop: "3px solid var(--color-accent)",
-                  borderLeft: "2px solid var(--color-accent)",
-                  borderRight: "2px solid var(--color-accent)",
-                }}
-              >
-                <span className="text-accent-foreground text-sm font-semibold">
-                  {vp.label}
-                </span>
-                <span className="text-accent-foreground/70 text-xs tabular-nums">
-                  {vp.width} x {contentH}
-                </span>
-              </div>
+              <span className="text-accent-foreground text-sm font-semibold">
+                {vp.label}
+              </span>
+              <span className="text-accent-foreground/70 text-xs tabular-nums">
+                {vp.width} x {vp.height}
+              </span>
+            </div>
 
-              {/* Iframe container – height matches measured content */}
-              <div
-                className="overflow-hidden bg-white"
+            {/* Iframe container */}
+            <div
+              className="overflow-hidden bg-white"
+              style={{
+                width: vp.width,
+                height: vp.height,
+                borderLeft: "2px solid var(--color-accent)",
+                borderRight: "2px solid var(--color-accent)",
+                borderBottom: "2px solid var(--color-accent)",
+              }}
+            >
+              <iframe
+                src={iframeUrl || undefined}
                 style={{
                   width: vp.width,
-                  height: contentH,
-                  borderLeft: "2px solid var(--color-accent)",
-                  borderRight: "2px solid var(--color-accent)",
-                  borderBottom: "2px solid var(--color-accent)",
-                  borderRadius: "0 0 8px 8px",
+                  height: vp.height,
+                  border: "none",
+                  display: "block",
                 }}
-              >
-                <iframe
-                  ref={(el) => {
-                    iframeRefs.current[i] = el;
-                  }}
-                  src={iframeUrl || undefined}
-                  style={{
-                    width: vp.width,
-                    height: contentH,
-                    border: "none",
-                    display: "block",
-                  }}
-                  scrolling="no"
-                  title={`${vp.label} Preview`}
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
-                  allow="cross-origin-isolated"
-                  onLoad={() => handleIframeLoad(i)}
-                />
-              </div>
+                title={`${vp.label} Preview`}
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation"
+                allow="cross-origin-isolated"
+              />
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );
