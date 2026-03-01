@@ -3,7 +3,8 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/db';
 import { projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { createHash } from 'crypto';
+import { hash as blake3hash } from 'blake3';
+import { extname, basename } from 'path';
 
 function getCfConfig() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -11,11 +12,36 @@ function getCfConfig() {
   if (!accountId || !apiToken) {
     throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set');
   }
-  return {
-    accountId,
-    apiToken,
-    apiBase: `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`,
+  return { accountId, apiToken };
+}
+
+const CF_BASE = 'https://api.cloudflare.com/client/v4';
+
+async function cfFetch<T = unknown>(path: string, apiToken: string, options: { body?: unknown; method?: string } = {}) {
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${apiToken}`,
   };
+  let body: BodyInit | undefined;
+  if (options.body instanceof FormData) {
+    body = options.body;
+  } else if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(CF_BASE + path, {
+    method: options.method ?? (body ? 'POST' : 'GET'),
+    headers,
+    body,
+  });
+
+  const data = await res.json() as { result: T; success: boolean; errors?: Array<{ code: number; message: string }> };
+  return data;
+}
+
+function computeHash(base64Content: string, filename: string): string {
+  const extension = extname(basename(filename)).substring(1); // e.g. "html", "js"
+  return blake3hash(base64Content + extension).toString('hex').slice(0, 32);
 }
 
 async function getProjectWithAuth(userId: string, projectId: string) {
@@ -46,81 +72,163 @@ export async function POST(
 
     // Create Pages project if first publish
     if (!project.cloudflareProjectName) {
-      const createRes = await fetch(cf.apiBase, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${cf.apiToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: projectName,
-          production_branch: 'main',
-        }),
+      const createRes = await cfFetch(`/accounts/${cf.accountId}/pages/projects`, cf.apiToken, {
+        body: { name: projectName, production_branch: 'main' },
       });
-
-      // 409 = already exists, that's fine
-      if (!createRes.ok && createRes.status !== 409) {
-        const err = await createRes.json();
-        return NextResponse.json(
-          { error: `Failed to create Cloudflare project: ${JSON.stringify(err)}` },
-          { status: 500 }
-        );
+      // 409 = already exists, fine
+      if (!createRes.success) {
+        const isConflict = createRes.errors?.some(e => e.code === 8000007);
+        if (!isConflict) {
+          return NextResponse.json(
+            { error: `Failed to create Cloudflare project: ${JSON.stringify(createRes.errors)}` },
+            { status: 500 }
+          );
+        }
       }
     }
 
-    // Parse the file map from request body: { files: { "/path": "base64data" } }
+    // Parse files from request body: { files: { "path": "base64data" } }
     const body = await request.json() as { files: Record<string, string> };
     if (!body.files || Object.keys(body.files).length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    // Build manifest and form data for Cloudflare Direct Upload
-    // Manifest maps path (no leading slash) to content hash
-    // Each file is appended as a blob with the hash as the form key
-    const manifest: Record<string, string> = {};
-    const fileEntries: Array<{ hash: string; buffer: Buffer }> = [];
-
-    for (const [filePath, base64Content] of Object.entries(body.files)) {
-      const buffer = Buffer.from(base64Content, 'base64');
-      const hash = createHash('sha256').update(buffer).digest('hex');
-      // Cloudflare manifest paths must NOT have a leading slash
-      const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-      manifest[normalizedPath] = hash;
-      fileEntries.push({ hash, buffer });
+    // Compute hashes for all files
+    interface FileEntry {
+      filename: string;    // e.g. "index.html", "assets/main.js"
+      base64: string;
+      hash: string;
+      contentType: string;
     }
 
-    // Build multipart form
+    const fileEntries: FileEntry[] = [];
+    for (const [filePath, base64Content] of Object.entries(body.files)) {
+      const filename = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      const hash = computeHash(base64Content, filename);
+      // Determine content type from extension
+      const ext = extname(filename).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.ico': 'image/x-icon',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+        '.eot': 'application/vnd.ms-fontobject',
+        '.txt': 'text/plain',
+        '.xml': 'application/xml',
+        '.wasm': 'application/wasm',
+        '.map': 'application/json',
+      };
+      fileEntries.push({
+        filename,
+        base64: base64Content,
+        hash,
+        contentType: mimeTypes[ext] || 'application/octet-stream',
+      });
+    }
+
+    // Step 1: Get upload JWT
+    const jwtRes = await cfFetch<{ jwt: string }>(
+      `/accounts/${cf.accountId}/pages/projects/${projectName}/upload-token`,
+      cf.apiToken
+    );
+    if (!jwtRes.success) {
+      return NextResponse.json(
+        { error: `Failed to get upload token: ${JSON.stringify(jwtRes.errors)}` },
+        { status: 500 }
+      );
+    }
+    const uploadJwt = jwtRes.result.jwt;
+
+    // Step 2: Check which files are missing
+    const allHashes = [...new Set(fileEntries.map(f => f.hash))];
+    const missingRes = await cfFetch<string[]>('/pages/assets/check-missing', cf.apiToken, {
+      body: { hashes: allHashes },
+    });
+    // Use Authorization with JWT for asset operations
+    const missingHashes = new Set(missingRes.success ? missingRes.result : allHashes);
+
+    // Step 3: Upload missing files
+    if (missingHashes.size > 0) {
+      // Deduplicate by hash
+      const seen = new Set<string>();
+      const toUpload = fileEntries.filter(f => {
+        if (!missingHashes.has(f.hash) || seen.has(f.hash)) return false;
+        seen.add(f.hash);
+        return true;
+      });
+
+      // Upload in batches (Cloudflare accepts arrays)
+      const BATCH_SIZE = 20;
+      for (let i = 0; i < toUpload.length; i += BATCH_SIZE) {
+        const batch = toUpload.slice(i, i + BATCH_SIZE);
+        const payload = batch.map(f => ({
+          key: f.hash,
+          value: f.base64,
+          metadata: { contentType: f.contentType },
+          base64: true,
+        }));
+
+        const uploadRes = await fetch(CF_BASE + '/pages/assets/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${uploadJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!uploadRes.ok) {
+          const err = await uploadRes.text();
+          return NextResponse.json(
+            { error: `File upload failed: ${err}` },
+            { status: 500 }
+          );
+        }
+      }
+
+      // Upsert hashes to finalize uploads
+      await fetch(CF_BASE + '/pages/assets/upsert-hashes', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${uploadJwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ hashes: allHashes }),
+      });
+    }
+
+    // Step 4: Create deployment with manifest
+    const manifest: Record<string, string> = {};
+    for (const f of fileEntries) {
+      manifest['/' + f.filename] = f.hash;
+    }
+
     const formData = new FormData();
     formData.append('manifest', JSON.stringify(manifest));
     formData.append('branch', 'main');
 
-    // Deduplicate by hash — same content only uploaded once
-    const seen = new Set<string>();
-    for (const entry of fileEntries) {
-      if (seen.has(entry.hash)) continue;
-      seen.add(entry.hash);
-      formData.append(entry.hash, new Blob([new Uint8Array(entry.buffer)]), entry.hash);
-    }
+    const deployRes = await cfFetch<{ url: string; id: string }>(
+      `/accounts/${cf.accountId}/pages/projects/${projectName}/deployments`,
+      cf.apiToken,
+      { body: formData }
+    );
 
-    const deployRes = await fetch(`${cf.apiBase}/${projectName}/deployments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cf.apiToken}`,
-      },
-      body: formData,
-    });
-
-    if (!deployRes.ok) {
-      const err = await deployRes.json();
+    if (!deployRes.success) {
       return NextResponse.json(
-        { error: `Deployment failed: ${JSON.stringify(err)}` },
+        { error: `Deployment failed: ${JSON.stringify(deployRes.errors)}` },
         { status: 500 }
       );
     }
-
-    const deployData = await deployRes.json() as {
-      result?: { url?: string; subdomain?: string };
-    };
 
     const deploymentUrl = `https://${projectName}.pages.dev`;
 
@@ -138,7 +246,6 @@ export async function POST(
       ok: true,
       url: deploymentUrl,
       projectName,
-      deploymentUrl: deployData.result?.url,
     });
   } catch (error) {
     console.error('Publish error:', error);
@@ -168,13 +275,12 @@ export async function DELETE(
 
     const cf = getCfConfig();
 
-    // Delete Cloudflare Pages project
-    await fetch(`${cf.apiBase}/${project.cloudflareProjectName}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${cf.apiToken}` },
-    });
+    await cfFetch(
+      `/accounts/${cf.accountId}/pages/projects/${project.cloudflareProjectName}`,
+      cf.apiToken,
+      { method: 'DELETE' }
+    );
 
-    // Clear DB columns
     const db = getDb();
     await db.update(projects)
       .set({
