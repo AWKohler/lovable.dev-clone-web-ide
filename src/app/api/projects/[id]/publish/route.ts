@@ -230,7 +230,27 @@ export async function POST(
       );
     }
 
-    const deploymentUrl = `https://${projectName}.pages.dev`;
+    // Step 5: Attach custom domain (idempotent — 409 means already attached)
+    const customDomain = `${projectName}.botflow-site.app`;
+    try {
+      const domainRes = await cfFetch(
+        `/accounts/${cf.accountId}/pages/projects/${projectName}/domains`,
+        cf.apiToken,
+        { body: { name: customDomain } }
+      );
+      // 409 = domain already attached, that's fine
+      if (!domainRes.success) {
+        const is409 = domainRes.errors?.some(e => e.code === 8000040 || e.message?.includes('already'));
+        if (!is409) {
+          console.warn('Failed to attach custom domain:', domainRes.errors);
+        }
+      }
+    } catch (err) {
+      // Non-fatal — the .pages.dev URL still works
+      console.warn('Custom domain attachment error:', err);
+    }
+
+    const deploymentUrl = `https://${customDomain}`;
 
     // Update DB
     const db = getDb();
