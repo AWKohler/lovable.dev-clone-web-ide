@@ -37,7 +37,20 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(chatMessages.createdAt));
 
     // Return in chronological order
-    const messages = [...rows].reverse().map((r) => ({ id: r.messageId, role: r.role, content: r.content as unknown }));
+    // v6: messages use `parts` array instead of `content`
+    const messages = [...rows].reverse().map((r) => {
+      const stored = r.content as Record<string, unknown>;
+      // If stored data has `parts` (v6 format), return as-is
+      if (stored && typeof stored === 'object' && 'parts' in stored) {
+        return { id: r.messageId, role: r.role, parts: stored.parts };
+      }
+      // Legacy v4 format: convert content to parts
+      if (stored && typeof stored === 'object') {
+        return { id: r.messageId, role: r.role, parts: stored };
+      }
+      // Fallback: wrap string content as text part
+      return { id: r.messageId, role: r.role, parts: [{ type: 'text', text: String(stored ?? '') }] };
+    });
     return NextResponse.json({ sessionId: session.id, messages });
   } catch (err) {
     console.error('GET /api/chat failed:', err);
@@ -50,7 +63,7 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
-    const { projectId, message } = body as { projectId?: string; message?: { id: string; role: string; content: unknown } };
+    const { projectId, message } = body as { projectId?: string; message?: { id: string; role: string; content?: unknown; parts?: unknown } };
     if (!projectId || !message?.id || !message?.role) {
       return NextResponse.json({ error: 'projectId and full message are required' }, { status: 400 });
     }
@@ -58,6 +71,11 @@ export async function POST(req: NextRequest) {
     const [proj] = await db.select().from(projects).where(eq(projects.id, projectId));
     if (!proj || proj.userId !== userId) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const session = await getOrCreateSession(db, projectId);
+
+    // v6: store parts in the content column (JSON), with a `parts` key for identification
+    const storedContent = message.parts
+      ? { parts: message.parts }
+      : (message.content as object);
 
     // Upsert by (sessionId, messageId) so we can update the assistant
     // message multiple times during streaming without creating duplicates.
@@ -67,13 +85,13 @@ export async function POST(req: NextRequest) {
         sessionId: session.id,
         messageId: message.id,
         role: message.role,
-        content: message.content as object,
+        content: storedContent,
       })
       .onConflictDoUpdate({
         target: [chatMessages.sessionId, chatMessages.messageId],
         set: {
           role: message.role,
-          content: message.content as object,
+          content: storedContent,
         },
       });
     return NextResponse.json({ ok: true });

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, isToolUIPart, getToolName, type UIMessage } from 'ai';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
-import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX, Cog } from 'lucide-react';
+import { ChevronDown, ChevronRight, Wrench, ArrowUp, X as IconX, Cog, AlertCircle, RotateCcw, Loader2, ListPlus } from 'lucide-react';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { WebContainerAgent, type GrepResult } from '@/lib/agent/webcontainer-agent';
 import { cn } from '@/lib/utils';
@@ -12,9 +13,36 @@ import { LiveActions } from '@/components/agent/LiveActions';
 import { useToast } from '@/components/ui/toast';
 import type { ToolCallData } from '@/lib/agent/ui-types';
 import { diffLineStats } from '@/lib/agent/diff-stats';
+import { MODEL_CONFIGS, type ModelId } from '@/lib/agent/models';
+import type { AgentErrorType } from '@/lib/agent/errors';
 
 type Props = { className?: string; projectId: string; initialPrompt?: string; platform?: 'web' | 'mobile' };
 
+// ============================================================================
+// Structured error from the API
+// ============================================================================
+interface StructuredError {
+  message: string;
+  type: AgentErrorType;
+  retryAfter?: number;
+}
+
+function parseError(raw: string): StructuredError {
+  try {
+    const parsed = JSON.parse(raw) as { error?: string; errorType?: AgentErrorType; retryAfter?: number; message?: string };
+    return {
+      message: parsed.error ?? parsed.message ?? raw,
+      type: (parsed.errorType as AgentErrorType) ?? 'unknown',
+      retryAfter: parsed.retryAfter,
+    };
+  } catch {
+    return { message: raw, type: 'unknown' };
+  }
+}
+
+// ============================================================================
+// ToolCard subcomponent
+// ============================================================================
 function ToolCard({ title, meta, content, defaultOpen = false }: { title: string; meta?: string; content: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -32,53 +60,128 @@ function ToolCard({ title, meta, content, defaultOpen = false }: { title: string
   );
 }
 
+// ============================================================================
+// Token display formatter
+// ============================================================================
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+  return String(tokens);
+}
+
+// ============================================================================
+// Main AgentPanel
+// ============================================================================
 export function AgentPanel({ className, projectId, initialPrompt, platform = 'web' }: Props) {
-  const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedIdsRef = useRef<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
   const [actions, setActions] = useState<ToolCallData[]>([]);
-  // Track last-saved assistant payload to allow streaming upserts
   const lastAssistantSavedRef = useRef<{ id: string; hash: string } | null>(null);
-  const [model, setModel] = useState<
-    'gpt-4.1' | 'claude-sonnet-4.6' | 'claude-haiku-4.5' | 'claude-opus-4.6' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5'
-  >('gpt-4.1');
+  const [model, setModel] = useState<ModelId>('gpt-5.2');
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
   const [hasClaudeOAuth, setHasClaudeOAuth] = useState<boolean | null>(null);
   const [hasMoonshotKey, setHasMoonshotKey] = useState<boolean | null>(null);
   const [hasFireworksKey, setHasFireworksKey] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [agentError, setAgentError] = useState<StructuredError | null>(null);
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
   const { toast } = useToast();
 
-  const { messages, input, handleSubmit, handleInputChange, status, setMessages, addToolResult, setInput, stop } = useChat({
+  // --- Input state (v6: managed externally) ---
+  const [input, setInput] = useState('');
+
+  // --- Message queue ---
+  const [messageQueue, setMessageQueue] = useState<string[]>([]);
+
+  // --- endTurn detection ---
+  const [endTurnCalled, setEndTurnCalled] = useState(false);
+  const [showCompletionWarning, setShowCompletionWarning] = useState(false);
+
+  // --- Token tracking ---
+  const [tokenEstimate, setTokenEstimate] = useState(0);
+  const maxTokens = MODEL_CONFIGS[model]?.maxContextTokens ?? 128_000;
+
+  // --- First message tracking ---
+  const [hasAgentResponded, setHasAgentResponded] = useState(false);
+
+  // --- Manual busy state (doesn't flicker between tool rounds) ---
+  const [isBusy, setIsBusy] = useState(false);
+  const busyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- AbortController for tool calls ---
+  const toolAbortRef = useRef<AbortController | null>(null);
+
+  // --- Stable transport ref (v6) ---
+  const transportRef = useRef(new DefaultChatTransport({
     api: '/api/agent',
     body: { projectId, platform },
-    async onFinish(message) {
-      // Persist final assistant message (complete content, including any tool-calls)
-      try {
-        await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId, message }),
-        });
-        savedIdsRef.current.add(message.id);
-      } catch (err) {
-        console.error('Failed to persist assistant message:', err);
-      }
-      setBusy(false);
+  }));
+
+  const { messages, sendMessage, setMessages, addToolOutput, stop, status } = useChat({
+    transport: transportRef.current,
+    onFinish({ message, isAbort }) {
+      // Don't clear busy on finish — let debounce handle it
+      // (onFinish fires between tool rounds in multi-step, causing premature busy=false)
+
+      if (isAbort) return;
+
+      // Persist final assistant message
+      (async () => {
+        try {
+          await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, message }),
+          });
+          savedIdsRef.current.add(message.id);
+        } catch (err) {
+          console.error('Failed to persist assistant message:', err);
+        }
+      })();
 
       // Emit event to trigger snapshot capture
       if (typeof window !== 'undefined') {
-        console.log('🚀 Dispatching agent-turn-finished event for project:', projectId);
         window.dispatchEvent(new CustomEvent('agent-turn-finished', { detail: { projectId } }));
       }
     },
-    onError: () => setBusy(false),
+    onError(error) {
+      // Clear busy state on error
+      setIsBusy(false);
+      if (busyDebounceRef.current) {
+        clearTimeout(busyDebounceRef.current);
+        busyDebounceRef.current = null;
+      }
+
+      const msg = error.message || 'An error occurred. Please try again.';
+      const structured = parseError(msg);
+      setAgentError(structured);
+
+      // Start countdown for rate limit errors
+      if (structured.retryAfter && structured.retryAfter > 0) {
+        setRetryCountdown(structured.retryAfter);
+      }
+    },
     async onToolCall({ toolCall }) {
       try {
-        const args = toolCall.args as Record<string, unknown>;
-        // Ephemeral: record tool invocation
+        // Check if abort was requested
+        if (toolAbortRef.current?.signal.aborted) {
+          addToolOutput({ tool: toolCall.toolName as 'endTurn', toolCallId: toolCall.toolCallId, output: 'Tool execution aborted by user.' });
+          return;
+        }
+
+        const args = toolCall.input as Record<string, unknown>;
+
+        // --- Handle endTurn tool ---
+        if (toolCall.toolName === 'endTurn') {
+          setEndTurnCalled(true);
+          setShowCompletionWarning(false);
+          const summary = String((args as { summary?: string }).summary ?? 'Task completed.');
+          addToolOutput({ tool: 'endTurn', toolCallId: toolCall.toolCallId, output: summary });
+          return;
+        }
+
+        // Record tool invocation
         setActions((prev) => [
           ...prev,
           {
@@ -89,14 +192,14 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             startedAt: Date.now(),
           },
         ]);
+
         switch (toolCall.toolName) {
           case 'listFiles': {
-            console.log("list files called")
             const out = await WebContainerAgent.listFiles(
               String(args.path ?? '/'),
               Boolean(args.recursive)
             );
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
+            addToolOutput({ tool: 'listFiles', toolCallId: toolCall.toolCallId, output: out });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -106,11 +209,10 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             break;
           }
           case 'writeFile': {
-            console.log("write file called")
             const path = String(args.path ?? '');
             const content = String(args.content ?? '');
             const res = await WebContainerAgent.writeFile(path, content, projectId);
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
+            addToolOutput({ tool: 'writeFile', toolCallId: toolCall.toolCallId, output: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -120,9 +222,8 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             break;
           }
           case 'readFile': {
-            console.log("read files called")
             const out = await WebContainerAgent.readFile(String(args.path ?? ''));
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: out });
+            addToolOutput({ tool: 'readFile', toolCallId: toolCall.toolCallId, output: out });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -132,19 +233,15 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             break;
           }
           case 'applyDiff': {
-            console.log("apply diff called")
             const path = String(args.path ?? '');
             const diff = String(args.diff ?? '');
-            // Capture before content for UI
             let before = '';
             try { before = await WebContainerAgent.readFile(path); } catch {}
             const res = await WebContainerAgent.applyDiff(path, diff, projectId);
-            // Capture after content for UI (only if ok)
             let after = before;
             try { after = await WebContainerAgent.readFile(path); } catch {}
             const stats = diffLineStats(before, after);
 
-            // Show user-friendly notification for diff errors
             if (!res.ok) {
               const failedCount = res.failed || 0;
               const appliedCount = res.applied || 0;
@@ -161,7 +258,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               }
             }
 
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(res) });
+            addToolOutput({ tool: 'applyDiff', toolCallId: toolCall.toolCallId, output: JSON.stringify(res) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -172,23 +269,16 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             break;
           }
           case 'searchFiles': {
-            console.log("search files called")
             const results: GrepResult[] = [];
-            let lastProgress = '';
             for await (const r of WebContainerAgent.searchFiles(
               String(args.path ?? '/'),
               String(args.query ?? '')
             )) {
-              // Check if it's a progress/error message or actual result
               if ('filePath' in r && 'lineNumber' in r && 'lineContent' in r) {
                 results.push(r);
-              } else if ('progress' in r || 'error' in r) {
-                // Store progress/error messages for logging
-                lastProgress = r.progress || r.error || '';
-                console.log('Search progress:', lastProgress);
               }
             }
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: JSON.stringify(results) });
+            addToolOutput({ tool: 'searchFiles', toolCallId: toolCall.toolCallId, output: JSON.stringify(results) });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -198,16 +288,13 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             break;
           }
           case 'executeCommand': {
-            console.log("execute command called")
-            console.log(args.command)
-            console.log(args.args)
             let combined = '';
             const cmd = String(args.command ?? '');
             const cmdArgs = Array.isArray(args.args) ? (args.args as unknown[]).map(String) : [];
             for await (const chunk of WebContainerAgent.executeCommand(cmd, cmdArgs)) {
               combined += chunk;
             }
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: combined });
+            addToolOutput({ tool: 'executeCommand', toolCallId: toolCall.toolCallId, output: combined });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: 'success',
@@ -220,7 +307,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             const linesBack = Number((args as { linesBack?: number }).linesBack ?? 200);
             const out = await WebContainerAgent.getDevServerLog(linesBack);
             const result = out.ok ? (out.log ?? '') : out.message;
-            await addToolResult({ toolCallId: toolCall.toolCallId, result });
+            addToolOutput({ tool: 'getDevServerLog', toolCallId: toolCall.toolCallId, output: result });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: out.ok ? 'success' : 'error',
@@ -233,7 +320,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             const linesBack = Number((args as { linesBack?: number }).linesBack ?? 200);
             const out = await WebContainerAgent.getBrowserLog(linesBack);
             const result = out.ok ? (out.log ?? '') : out.message;
-            await addToolResult({ toolCallId: toolCall.toolCallId, result });
+            addToolOutput({ tool: 'getBrowserLog', toolCallId: toolCall.toolCallId, output: result });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: out.ok ? 'success' : 'error',
@@ -245,7 +332,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           case 'startDevServer': {
             const res = await WebContainerAgent.startDevServer();
             const msg = res.message;
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            addToolOutput({ tool: 'startDevServer', toolCallId: toolCall.toolCallId, output: msg });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -257,7 +344,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           case 'stopDevServer': {
             const res = await WebContainerAgent.stopDevServer();
             const msg = res.message;
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            addToolOutput({ tool: 'stopDevServer', toolCallId: toolCall.toolCallId, output: msg });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -270,7 +357,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             const running = await WebContainerAgent.isDevServerRunning();
             if (!running) {
               const msg = 'Dev server is not running. Start it before refreshing the preview.';
-              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              addToolOutput({ tool: 'refreshPreview', toolCallId: toolCall.toolCallId, output: msg });
               setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
                 ...a,
                 status: 'error',
@@ -284,7 +371,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
                 window.dispatchEvent(new CustomEvent('preview-refresh'));
               }
               const msg = 'Preview refresh requested.';
-              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              addToolOutput({ tool: 'refreshPreview', toolCallId: toolCall.toolCallId, output: msg });
               setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
                 ...a,
                 status: 'success',
@@ -293,7 +380,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
               }) : a));
             } catch (e) {
               const msg = `Failed to refresh preview: ${e instanceof Error ? e.message : String(e)}`;
-              await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+              addToolOutput({ tool: 'refreshPreview', toolCallId: toolCall.toolCallId, output: msg });
               setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
                 ...a,
                 status: 'error',
@@ -306,7 +393,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
           case 'convexDeploy': {
             const res = await WebContainerAgent.deployConvex(projectId);
             const msg = res.message;
-            await addToolResult({ toolCallId: toolCall.toolCallId, result: msg });
+            addToolOutput({ tool: 'convexDeploy', toolCallId: toolCall.toolCallId, output: msg });
             setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
               ...a,
               status: res.ok ? 'success' : 'error',
@@ -319,7 +406,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       } catch (err: unknown) {
         console.error('Tool error', err);
         const message = err instanceof Error ? err.message : String(err);
-        await addToolResult({ toolCallId: toolCall.toolCallId, result: `Tool execution failed: ${message}` });
+        addToolOutput({ tool: toolCall.toolName as 'endTurn', toolCallId: toolCall.toolCallId, output: `Tool execution failed: ${message}` });
         setActions((prev) => prev.map((a) => a.toolCallId === toolCall.toolCallId ? ({
           ...a,
           status: 'error',
@@ -328,10 +415,128 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         }) : a));
       }
     },
+    // v6: auto-resubmit when tool calls are complete (replaces maxSteps)
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
 
+  // --- Refs for values needed in effects (avoid deps that change every render) ---
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const messageQueueRef = useRef(messageQueue);
+  messageQueueRef.current = messageQueue;
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  const endTurnCalledRef = useRef(endTurnCalled);
+  endTurnCalledRef.current = endTurnCalled;
+
+  // --- Debounced busy state: goes true immediately on activity, only goes false after a delay ---
+  useEffect(() => {
+    const active = status === 'streaming' || status === 'submitted';
+    if (active) {
+      if (busyDebounceRef.current) {
+        clearTimeout(busyDebounceRef.current);
+        busyDebounceRef.current = null;
+      }
+      setIsBusy(true);
+      if (!toolAbortRef.current || toolAbortRef.current.signal.aborted) {
+        toolAbortRef.current = new AbortController();
+      }
+    } else {
+      // Delay clearing busy to absorb gaps between tool rounds (2s debounce)
+      if (busyDebounceRef.current) clearTimeout(busyDebounceRef.current);
+      busyDebounceRef.current = setTimeout(() => {
+        setIsBusy(false);
+        busyDebounceRef.current = null;
+      }, 2000);
+    }
+  }, [status]);
+
+  const isAgentWorking = isBusy;
+
+  // Emit custom event when busy state changes (workspace listens for preview loading state)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-busy-change', { detail: { isBusy } }));
+    }
+  }, [isBusy]);
+
+  // --- "Agent may not have finished" warning ---
+  // Only show when busy state truly settles to false (debounced) and endTurn wasn't called
+  const prevBusyRef = useRef(false);
+  useEffect(() => {
+    // Detect transition from busy → not busy (the real end of agent work)
+    if (prevBusyRef.current && !isBusy) {
+      if (!endTurnCalledRef.current && messagesRef.current.some(m => m.role === 'assistant')) {
+        setShowCompletionWarning(true);
+      }
+      // Process message queue
+      if (messageQueueRef.current.length > 0) {
+        const [next, ...rest] = messageQueueRef.current;
+        setMessageQueue(rest);
+        setTimeout(() => {
+          sendMessageRef.current({ text: next });
+        }, 300);
+      }
+    }
+    prevBusyRef.current = isBusy;
+  }, [isBusy]); // Only trigger on actual busy state transitions
+
+  // Track first response — only check when message count changes
+  useEffect(() => {
+    if (!hasAgentResponded && messagesRef.current.some(m => m.role === 'assistant')) {
+      setHasAgentResponded(true);
+    }
+  }, [messages.length, hasAgentResponded]);
+
+  // Reset endTurn tracking when a new user message is sent
+  const lastMsgIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const msgs = messagesRef.current;
+    const lastMsg = msgs[msgs.length - 1];
+    if (lastMsg?.role === 'user' && lastMsg.id !== lastMsgIdRef.current) {
+      lastMsgIdRef.current = lastMsg.id;
+      setEndTurnCalled(false);
+      setShowCompletionWarning(false);
+    }
+  }, [messages.length]);
+
+  // Estimate total tokens in conversation (messages + system prompt + tools overhead)
+  // Only recalculate when message count changes (not on every content update during streaming)
+  useEffect(() => {
+    const SYSTEM_PROMPT_TOKENS = 4500;
+    const TOOLS_TOKENS = 800;
+    let msgTokens = 0;
+    for (const msg of messagesRef.current) {
+      for (const part of msg.parts) {
+        if (part.type === 'text') {
+          msgTokens += Math.ceil(part.text.length / 4);
+        } else if (isToolUIPart(part)) {
+          const toolStr = JSON.stringify(part);
+          msgTokens += Math.ceil(toolStr.length / 4);
+        }
+      }
+      msgTokens += 4;
+    }
+    setTokenEstimate(SYSTEM_PROMPT_TOKENS + TOOLS_TOKENS + msgTokens);
+  }, [messages.length]);
+
+  // Rate limit countdown timer
+  useEffect(() => {
+    if (retryCountdown === null || retryCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setRetryCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [retryCountdown]);
+
   // Remove only the "prompt" query param from the URL without reloading
-  const removePromptFromUrl = () => {
+  const removePromptFromUrl = useCallback(() => {
     try {
       const url = new URL(window.location.href);
       if (url.searchParams.has('prompt')) {
@@ -339,10 +544,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         window.history.replaceState({}, document.title, url.toString());
       }
     } catch {}
-  };
-
-  // Convert status to isLoading for backward compatibility
-  const isLoading = status === 'streaming' || status === 'submitted';
+  }, []);
 
   // Load initial chat history
   useEffect(() => {
@@ -355,18 +557,19 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         if (cancelled) return;
         if (Array.isArray(data?.messages)) {
           setMessages(data.messages);
-          // Initialize saved id set to avoid re-saving
           const ids = new Set<string>();
           for (const m of data.messages) ids.add(m.id);
           savedIdsRef.current = ids;
-          // Seed assistant hash to avoid immediate redundant upsert
-          const lastAssistant = [...data.messages].reverse().find((m) => m.role === 'assistant');
+          const lastAssistant = [...data.messages].reverse().find((m: { role: string }) => m.role === 'assistant');
           if (lastAssistant) {
             try {
-              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify(lastAssistant.content).slice(-512) };
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: JSON.stringify(lastAssistant.parts ?? lastAssistant.content).slice(-512) };
             } catch {
-              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: String(lastAssistant.content) };
+              lastAssistantSavedRef.current = { id: lastAssistant.id, hash: String(lastAssistant.parts ?? lastAssistant.content) };
             }
+          }
+          if (data.messages.some((m: { role: string }) => m.role === 'assistant')) {
+            setHasAgentResponded(true);
           }
         }
       } catch (err) {
@@ -376,9 +579,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
       }
     }
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [projectId, setMessages]);
 
   // Load project model and user settings (BYOK presence)
@@ -389,17 +590,18 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         if (res.ok) {
           const proj = await res.json();
           if (
-            proj?.model === 'gpt-4.1' ||
+            proj?.model === 'gpt-5.2' ||
+            proj?.model === 'gpt-4.1' || // legacy migration
             proj?.model === 'claude-sonnet-4.6' ||
-            proj?.model === 'claude-sonnet-4.5' || // backwards compat
+            proj?.model === 'claude-sonnet-4.5' ||
             proj?.model === 'claude-haiku-4.5' ||
             proj?.model === 'claude-opus-4.6' ||
-            proj?.model === 'claude-opus-4.5' || // backwards compat
+            proj?.model === 'claude-opus-4.5' ||
             proj?.model === 'kimi-k2-thinking-turbo' ||
             proj?.model === 'fireworks-minimax-m2p5'
           ) {
-            // Migrate stored 4.5 values to 4.6
-            const m = proj.model === 'claude-sonnet-4.5' ? 'claude-sonnet-4.6'
+            const m = proj.model === 'gpt-4.1' ? 'gpt-5.2'
+              : proj.model === 'claude-sonnet-4.5' ? 'claude-sonnet-4.6'
               : proj.model === 'claude-opus-4.5' ? 'claude-opus-4.6'
               : proj.model;
             setModel(m);
@@ -420,32 +622,12 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
     })();
   }, [projectId]);
 
-  // Persist new messages from user/tool/etc. Also upsert assistant progressively.
+  // Persist new messages — only when message count changes (not during streaming content updates)
   useEffect(() => {
+    if (!initialized) return;
     async function persistNewMessages() {
-      for (const m of messages) {
-        // Progressive upsert for assistant so refreshes preserve context
-        if (m.role === 'assistant') {
-          const hash = (() => {
-            try { return JSON.stringify(m.content).slice(-512); } catch { return String(m.content); }
-          })();
-          const prev = lastAssistantSavedRef.current;
-          if (!prev || prev.id !== m.id || prev.hash !== hash) {
-            try {
-              await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId, message: m }),
-              });
-              lastAssistantSavedRef.current = { id: m.id, hash };
-            } catch (err) {
-              console.error('Failed to upsert assistant message:', err);
-            }
-          }
-          continue;
-        }
-
-        // One-shot insert for non-assistant roles
+      for (const m of messagesRef.current) {
+        if (m.role === 'assistant') continue; // Assistant messages are persisted in onFinish
         if (!savedIdsRef.current.has(m.id)) {
           try {
             await fetch('/api/chat', {
@@ -460,43 +642,176 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
         }
       }
     }
-    // Avoid running before we’ve loaded existing history
-    if (initialized) void persistNewMessages();
-  }, [messages, projectId, initialized]);
+    void persistNewMessages();
+  }, [messages.length, projectId, initialized]);
 
+  // Initial prompt submission — fire once when initialized with no existing messages
+  const initialPromptSentRef = useRef(false);
   useEffect(() => {
-    // If an initial prompt exists, submit it once on mount
-    if (initialPrompt && !initialized && messages.length === 0) {
-      setInput(initialPrompt);
-      // submit on next tick so input state is applied
+    if (initialized && initialPrompt && !initialPromptSentRef.current && messagesRef.current.length === 0) {
+      initialPromptSentRef.current = true;
       setTimeout(() => {
-        // Call handleSubmit with a synthetic event
-        handleSubmit({ preventDefault() {} } as React.FormEvent<HTMLFormElement>);
+        sendMessageRef.current({ text: initialPrompt });
         removePromptFromUrl();
       }, 0);
     }
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isLoading, handleSubmit, initialPrompt, initialized, setInput]);
+  }, [initialized, initialPrompt, removePromptFromUrl]);
 
-  // Ensure LiveActions visibility stays pinned to the bottom as actions stream in
+  // Keep scrolled to bottom on new messages or actions
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [actions.length]);
+  }, [messages.length, actions.length]);
 
-  const placeholder = useMemo(
-    () =>
-            // 'Ask me to inspect files, propose changes as diffs, run dev, etc. For edits, I use SEARCH/REPLACE blocks.',
+  // --- Submit handler ---
+  const onFormSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input.trim()) return;
 
-      'Ask Botflow...',
-    []
-  );
+    const usingAnthropic = model === 'claude-sonnet-4.6' || model === 'claude-haiku-4.5' || model === 'claude-opus-4.6';
+    const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
+    if ((model === 'gpt-5.2' && hasOpenAIKey === false) || (usingAnthropic && hasAnthropicCreds === false)) {
+      toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-5.2' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
+      return;
+    }
+
+    // --- Message queueing: if agent is working, queue the message ---
+    if (isAgentWorking) {
+      setMessageQueue(prev => [...prev, input.trim()]);
+      setInput('');
+      toast({ title: 'Message queued', description: `Will be sent when the agent finishes. (${messageQueue.length + 1} in queue)` });
+      return;
+    }
+
+    setAgentError(null);
+    setRetryCountdown(null);
+    setEndTurnCalled(false);
+    setShowCompletionWarning(false);
+    setIsBusy(true);
+    toolAbortRef.current = new AbortController();
+    sendMessage({ text: input.trim() });
+    setInput('');
+    removePromptFromUrl();
+  }, [model, hasOpenAIKey, hasAnthropicKey, hasClaudeOAuth, isAgentWorking, input, messageQueue.length, sendMessage, removePromptFromUrl, toast]);
+
+  // --- Re-prompt for lazy completion ---
+  const handleReprompt = useCallback(() => {
+    setShowCompletionWarning(false);
+    setEndTurnCalled(false);
+    setIsBusy(true);
+    toolAbortRef.current = new AbortController();
+    sendMessage({ text: 'You stopped without calling endTurn. Please continue or call endTurn if done.' });
+  }, [sendMessage]);
+
+  // --- Token usage bar color ---
+  const tokenRatio = maxTokens > 0 ? tokenEstimate / maxTokens : 0;
+  const tokenBarColor = tokenRatio >= 0.9 ? 'bg-red-500' : tokenRatio >= 0.7 ? 'bg-yellow-500' : 'bg-accent';
+
+  const placeholder = useMemo(() => 'Ask Botflow...', []);
+
+  // --- Handle input change ---
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  }, []);
+
+  // --- Error display component ---
+  const renderError = () => {
+    if (!agentError) return null;
+
+    let errorContent: React.ReactNode;
+    switch (agentError.type) {
+      case 'rate_limit':
+        errorContent = (
+          <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">
+            Rate limited.{retryCountdown !== null && retryCountdown > 0
+              ? ` Resets in ${retryCountdown}s.`
+              : ' Please wait a moment and try again.'}
+          </p>
+        );
+        break;
+      case 'auth':
+        errorContent = (
+          <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">
+            Authentication error. Check your API key in{' '}
+            <button type="button" onClick={() => setShowSettings(true)} className="underline hover:text-red-300">Settings</button>.
+          </p>
+        );
+        break;
+      case 'context_overflow':
+        errorContent = (
+          <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">
+            Context too large. Try sending a shorter message or{' '}
+            <button
+              type="button"
+              onClick={async () => {
+                const confirmed = window.confirm('Reset chat to free up context? This will delete all messages.');
+                if (!confirmed) return;
+                try {
+                  await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                  savedIdsRef.current.clear();
+                  lastAssistantSavedRef.current = null;
+                  setMessages([]);
+                  setAgentError(null);
+                } catch {}
+              }}
+              className="underline hover:text-red-300"
+            >
+              reset the conversation
+            </button>.
+          </p>
+        );
+        break;
+      default:
+        errorContent = <p className="flex-1 text-xs leading-relaxed whitespace-pre-wrap">{agentError.message}</p>;
+    }
+
+    return (
+      <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 bg-red-500/10 border border-red-500/20 text-red-400">
+        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+        {errorContent}
+        <div className="flex items-center gap-1 shrink-0">
+          {agentError.type !== 'auth' && (
+            <button
+              type="button"
+              onClick={() => {
+                setAgentError(null);
+                setRetryCountdown(null);
+                // Re-submit the last user message as a retry
+                const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                if (lastUserMsg) {
+                  const textPart = lastUserMsg.parts.find(p => p.type === 'text');
+                  const content = textPart && 'text' in textPart ? textPart.text : '';
+                  if (content) {
+                    setIsBusy(true);
+                    toolAbortRef.current = new AbortController();
+                    sendMessage({ text: content });
+                  }
+                }
+              }}
+              className="text-red-400/60 hover:text-red-400 transition-colors"
+              aria-label="Retry"
+              title="Retry"
+            >
+              <RotateCcw size={13} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setAgentError(null); setRetryCountdown(null); }}
+            className="text-red-400/60 hover:text-red-400 transition-colors"
+            aria-label="Dismiss"
+          >
+            <IconX size={13} />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={cn('flex h-full flex-col text-sm bg-surface text-fg p-2.5', className)}>
+      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface">
         <button onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings" className="text-muted hover:text-fg">
           <Cog size={16} />
@@ -506,26 +821,20 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             className="bg-elevated border border-border rounded-md px-2 py-1 text-xs text-muted"
             value={model}
             onChange={async (e) => {
-              const next = e.target.value as
-                | 'gpt-4.1'
-                | 'claude-sonnet-4.6'
-                | 'claude-haiku-4.5'
-                | 'claude-opus-4.6'
-                | 'kimi-k2-thinking-turbo'
-                | 'fireworks-minimax-m2p5';
+              const next = e.target.value as ModelId;
               const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
-              const keyChecks = {
-                'gpt-4.1': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
+              const keyChecks: Record<ModelId, { hasKey: boolean | null; provider: string }> = {
+                'gpt-5.2': { hasKey: hasOpenAIKey, provider: 'OpenAI' },
                 'claude-sonnet-4.6': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
                 'claude-haiku-4.5': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
                 'claude-opus-4.6': { hasKey: hasAnthropicCreds, provider: 'Anthropic' },
                 'kimi-k2-thinking-turbo': { hasKey: hasMoonshotKey, provider: 'Moonshot' },
-                'fireworks-minimax-m2p5': { hasKey: hasFireworksKey, provider: 'Fireworks AI' }
-              } as const;
+                'fireworks-minimax-m2p5': { hasKey: hasFireworksKey, provider: 'Fireworks AI' },
+              };
               const check = keyChecks[next];
               if (check.hasKey === false) {
                 toast({ title: 'Missing API key', description: `Please add your ${check.provider} API key in Settings.` });
-                e.target.value = model; // revert
+                e.target.value = model;
                 return;
               }
               try {
@@ -542,7 +851,7 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             }}
             title="Model"
           >
-            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-5.2">GPT-5.2</option>
             <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
             <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
             <option value="claude-opus-4.6">Claude Opus 4.6</option>
@@ -550,105 +859,114 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             <option value="fireworks-minimax-m2p5">Fireworks MiniMax-M2.5</option>
           </select>
           <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={async () => {
-            const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
-            if (!confirmed) return;
-            try {
-              await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
-              savedIdsRef.current.clear();
-              lastAssistantSavedRef.current = null;
-              setMessages([]);
-            } catch (err) {
-              console.error('Failed to reset chat:', err);
-            }
-          }}
-        >
-          Reset
-        </Button>
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={async () => {
+              const confirmed = window.confirm('Reset chat? This will permanently delete all messages for this project.');
+              if (!confirmed) return;
+              try {
+                await fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+                savedIdsRef.current.clear();
+                lastAssistantSavedRef.current = null;
+                setMessages([]);
+                setHasAgentResponded(false);
+                setTokenEstimate(0);
+              } catch (err) {
+                console.error('Failed to reset chat:', err);
+              }
+            }}
+          >
+            Reset
+          </Button>
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 p-3 modern-scrollbar">
-        {messages.map((m) => {
-          type TextPart = { type: 'text'; text: string };
-          type ToolCallPart = { type: 'tool-call'; toolCall: unknown };
-          type DataPart = { type: 'data'; data: unknown };
-          type UiPart = TextPart | ToolCallPart | DataPart | Record<string, unknown>;
 
-          const content = (m as { content: unknown }).content;
-          return (
-            <div key={m.id} className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight', m.role === 'user' ? 'bg-elevated' : '') }>
-              {/* <div className="text-[11px] mb-1 text-muted uppercase tracking-wide">{m.role}</div> */}
-              {Array.isArray(content) ? (
-                (content as UiPart[]).map((part, i: number) => {
-                  if ((part as TextPart).type === 'text' && typeof (part as TextPart).text === 'string') {
-                    return <Markdown key={i} content={(part as TextPart).text} />;
-                  }
-                  if ((part as ToolCallPart).type === 'tool-call') {
-                    const t = (part as ToolCallPart).toolCall as { toolName?: string; args?: unknown };
-                    const meta = t?.toolName ? `• ${t.toolName}` : undefined;
-                    return (
-                      <ToolCard
-                        key={i}
-                        title="Tool Call"
-                        meta={meta}
-                        content={
-                          <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">
-                            {JSON.stringify(t?.args ?? t, null, 2)}
-                          </pre>
-                        }
-                      />
-                    );
-                  }
-                  if ((part as DataPart).type === 'data') {
-                    const data = (part as DataPart).data;
-                    return (
-                      <ToolCard
-                        key={i}
-                        title="Tool Result"
-                        content={
-                          typeof data === 'string' ? (
-                            <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border whitespace-pre-wrap">{data}</pre>
-                          ) : (
-                            <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">{JSON.stringify(data, null, 2)}</pre>
-                          )
-                        }
-                        defaultOpen={false}
-                      />
-                    );
-                  }
-                  return <pre key={i} className="text-xs overflow-auto bg-soft p-2 rounded border border-border">{JSON.stringify(part, null, 2)}</pre>;
-                })
-              ) : (
-                <Markdown content={String(content ?? '')} />
-              )}
-            </div>
-          );
-        })}
-        {isLoading && (
-          <div className="text-xs text-muted">Thinking…</div>
+      {/* Messages — v6 parts-based rendering */}
+      <div ref={scrollRef} className="flex-1 overflow-auto space-y-3 p-3 modern-scrollbar">
+        {messages.map((m) => (
+          <div key={m.id} className={cn('rounded-xl px-2 py-3 text-[1.1rem] tracking tight', m.role === 'user' ? 'bg-elevated' : '')}>
+            {m.parts.map((part, i) => {
+              if (part.type === 'text') {
+                return <Markdown key={i} content={part.text} />;
+              }
+              if (isToolUIPart(part)) {
+                const toolName = getToolName(part);
+                // Don't show endTurn tool calls in the UI
+                if (toolName === 'endTurn') return null;
+
+                const state = part.state;
+                const stateLabel = state === 'output-available' ? 'done' : state === 'input-available' ? 'running' : state;
+
+                return (
+                  <ToolCard
+                    key={i}
+                    title="Tool Call"
+                    meta={`\u2022 ${toolName} (${stateLabel})`}
+                    content={
+                      <pre className="text-xs overflow-auto bg-surface p-2 rounded border border-border">
+                        {JSON.stringify('input' in part ? part.input : part, null, 2)}
+                      </pre>
+                    }
+                  />
+                );
+              }
+              if (part.type === 'reasoning') {
+                return (
+                  <div key={i} className="text-xs text-muted italic border-l-2 border-accent/30 pl-2 my-1">
+                    {part.text}
+                  </div>
+                );
+              }
+              // Fallback for other part types
+              return null;
+            })}
+          </div>
+        ))}
+
+        {/* Error banner */}
+        {renderError()}
+
+        {/* Lazy completion warning */}
+        {showCompletionWarning && !isAgentWorking && !agentError && (
+          <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+            <AlertCircle size={14} className="shrink-0" />
+            <p className="flex-1 text-xs leading-relaxed">Agent may not have finished.</p>
+            <button
+              type="button"
+              onClick={handleReprompt}
+              className="text-xs text-yellow-400 hover:text-yellow-300 underline shrink-0"
+            >
+              Re-prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCompletionWarning(false)}
+              className="text-yellow-400/60 hover:text-yellow-400 transition-colors shrink-0"
+              aria-label="Dismiss"
+            >
+              <IconX size={13} />
+            </button>
+          </div>
         )}
+
+        {/* Persistent thinking indicator */}
+        {isAgentWorking && (
+          <div className="flex items-center gap-2 py-2">
+            <Loader2 size={14} className="animate-spin text-accent" />
+            <span className="text-xs text-muted">Agent is working<span className="animate-pulse">...</span></span>
+          </div>
+        )}
+
         <LiveActions
           actions={actions}
           onClear={() => setActions([])}
         />
       </div>
 
+      {/* Input form */}
       <form
-        onSubmit={(e) => {
-          const usingAnthropic = model === 'claude-sonnet-4.6' || model === 'claude-haiku-4.5' || model === 'claude-opus-4.6';
-          const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
-          if ((model === 'gpt-4.1' && hasOpenAIKey === false) || (usingAnthropic && hasAnthropicCreds === false)) {
-            e.preventDefault();
-            toast({ title: 'Missing API key', description: `Please add your ${model === 'gpt-4.1' ? 'OpenAI' : 'Anthropic'} API key in Settings.` });
-            return;
-          }
-          setBusy(true);
-          handleSubmit(e);
-          removePromptFromUrl();
-        }}
+        onSubmit={onFormSubmit}
         className="group flex flex-col gap-2 rounded-2xl border border-border bg-elevated p-4 transition-colors duration-150 ease-in-out relative mt-2"
       >
         <div data-state="closed" style={{ cursor: 'text' }}>
@@ -656,36 +974,58 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             <textarea
               className="flex w-full ring-offset-background placeholder:text-muted focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug placeholder-shown:text-ellipsis placeholder-shown:whitespace-nowrap md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0"
               id="chatinput"
-              placeholder={placeholder}
+              placeholder={isAgentWorking ? 'Type to queue a message...' : placeholder}
               maxLength={50000}
               style={{ minHeight: 40, height: 40 }}
               value={input}
               onChange={handleInputChange}
-              disabled={busy}
             />
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {/* File upload input, hidden for now */}
           <input id="file-upload" className="hidden" accept="image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp" multiple tabIndex={-1} type="file" style={{ border: 0, clip: 'rect(0px, 0px, 0px, 0px)', clipPath: 'inset(50%)', height: 1, margin: '0px -1px -1px 0px', overflow: 'hidden', padding: 0, position: 'absolute', width: 1, whiteSpace: 'nowrap' }} />
-          {/* Example tool button, not functional here */}
-          {/* <button type="button" className="flex size-6 items-center justify-center rounded-full border border-border text-muted outline-none duration-150 ease-out shrink-0 transition-colors hover:bg-muted-hover" tabIndex={-1}>
-            <ChevronRight size={16} />
-          </button> */}
+
+          {/* Queued message count */}
+          {messageQueue.length > 0 && (
+            <span className="text-[10px] text-muted bg-soft border border-border rounded-full px-2 py-0.5">
+              {messageQueue.length} queued
+            </span>
+          )}
+
           <div className="ml-auto flex items-center gap-1">
-            {/* Chat button, not functional here */}
-            {/* <button type="button" className="items-center justify-center whitespace-nowrap text-sm transition-colors duration-100 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-elevated shadow-sm px-3 flex h-6 gap-1 rounded-full border py-0 pl-1.5 pr-2.5 font-normal text-muted border-border hover:bg-transparent md:hover:bg-accent md:hover:text-muted-foreground" tabIndex={-1}>
-              <ChevronDown size={16} /> Chat
-            </button> */}
             <div className="flex items-center gap-1">
-              {busy ? (
+              {isAgentWorking && input.trim() ? (
+                /* Queue button: shown when agent is working AND user has typed something */
+                <button
+                  id="chatinput-queue-button"
+                  type="submit"
+                  className="flex size-6 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors duration-150 ease-out hover:opacity-80"
+                  title="Queue message"
+                  aria-label="Queue message"
+                >
+                  <ListPlus size={16} />
+                </button>
+              ) : isAgentWorking ? (
+                /* Stop button: shown when agent is working and no text entered */
                 <button
                   id="chatinput-stop-button"
                   type="button"
                   className={cn(
                     'flex size-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 ease-out'
                   )}
-                  onClick={() => { stop(); setBusy(false); }}
+                  onClick={() => {
+                    stop();
+                    if (toolAbortRef.current) {
+                      toolAbortRef.current.abort();
+                    }
+                    setIsBusy(false);
+                    if (busyDebounceRef.current) {
+                      clearTimeout(busyDebounceRef.current);
+                      busyDebounceRef.current = null;
+                    }
+                    setShowCompletionWarning(false);
+                    setMessageQueue([]);
+                  }}
                   title="Stop"
                   aria-label="Stop"
                 >
@@ -709,11 +1049,26 @@ export function AgentPanel({ className, projectId, initialPrompt, platform = 'we
             </div>
           </div>
         </div>
-        {/* When busy, the stop control replaces the send button above */}
       </form>
-      {/* <div className="mt-1 text-[11px] text-muted">
-        Tip: For edits, I apply diffs with SEARCH/REPLACE blocks. If a block fails to match, I’ll ask for a corrected diff.
-      </div> */}
+
+      {/* Token usage footer */}
+      {tokenEstimate > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 mt-1">
+          <div className="flex-1 h-1 rounded-full bg-soft overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all duration-300', tokenBarColor)}
+              style={{ width: `${Math.min(tokenRatio * 100, 100)}%` }}
+            />
+          </div>
+          <span className={cn(
+            'text-[10px] tabular-nums',
+            tokenRatio >= 0.9 ? 'text-red-400' : tokenRatio >= 0.7 ? 'text-yellow-400' : 'text-muted'
+          )}>
+            {formatTokenCount(tokenEstimate)} / {formatTokenCount(maxTokens)}
+          </span>
+        </div>
+      )}
+
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );

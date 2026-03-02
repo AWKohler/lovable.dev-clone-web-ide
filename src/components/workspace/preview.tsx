@@ -34,6 +34,7 @@ interface PreviewProps {
   platform?: "web" | "mobile";
   expUrl?: string | null;
   htmlSnapshotUrl?: string | null;
+  isAgentWorking?: boolean;
 }
 
 const DEVICE_SIZES = {
@@ -205,6 +206,45 @@ function ResponsiveCanvas({ iframeUrl }: { iframeUrl: string }) {
   );
 }
 
+const LOADING_MESSAGES = [
+  "Setting up your project...",
+  "Scaffolding files and folders...",
+  "Installing dependencies...",
+  "Configuring your app...",
+  "Writing components...",
+  "Almost there...",
+  "Putting the finishing touches on...",
+  "Brewing some code...",
+];
+
+function AgentLoadingCarousel() {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="text-center max-w-md px-6">
+      <div className="flex items-center justify-center mb-4">
+        <span className="inline-flex h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+      </div>
+      <p
+        className="text-lg font-medium text-fg transition-opacity duration-500"
+        key={index}
+      >
+        {LOADING_MESSAGES[index]}
+      </p>
+      <p className="text-sm text-muted mt-2">
+        The agent is building your app
+      </p>
+    </div>
+  );
+}
+
 export function Preview({
   previews,
   activePreviewIndex,
@@ -221,6 +261,7 @@ export function Preview({
   platform = "web",
   expUrl,
   htmlSnapshotUrl,
+  isAgentWorking,
 }: PreviewProps) {
   const [internalDevice, setInternalDevice] =
     useState<keyof typeof DEVICE_SIZES>("desktop");
@@ -651,6 +692,15 @@ export function Preview({
                   : "Click to start dev server"}
             </p>
           </div>
+        </div>
+      );
+    }
+
+    // Agent is working on the first prompt - show engaging loading carousel
+    if (isAgentWorking) {
+      return (
+        <div className="h-full flex items-center justify-center bg-surface text-muted rounded-xl border border-border">
+          <AgentLoadingCarousel />
         </div>
       );
     }

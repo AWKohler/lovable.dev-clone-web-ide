@@ -5,8 +5,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   userId: text('user_id').notNull(), // Clerk user id
   platform: text('platform').notNull().default('web'), // 'web' | 'mobile'
-  // Preferred model for this project: 'gpt-4.1' | 'claude-sonnet-4.5' | 'claude-haiku-4.5' | 'claude-opus-4.5' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5'
-  model: text('model').notNull().default('gpt-4.1'),
+  // Preferred model for this project: 'gpt-5.2' | 'claude-sonnet-4.6' | 'claude-haiku-4.5' | 'claude-opus-4.6' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5'
+  model: text('model').notNull().default('gpt-5.2'),
   // Snapshot URLs for project thumbnails and HTML captures
   thumbnailUrl: text('thumbnail_url'),
   htmlSnapshotUrl: text('html_snapshot_url'),

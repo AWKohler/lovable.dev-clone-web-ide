@@ -21,13 +21,13 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState<"web" | "mobile">("web");
   const [model, setModel] = useState<
-    | "gpt-4.1"
+    | "gpt-5.2"
     | "claude-sonnet-4.6"
     | "claude-haiku-4.5"
     | "claude-opus-4.6"
     | "kimi-k2-thinking-turbo"
     | "fireworks-minimax-m2p5"
-  >("gpt-4.1");
+  >("gpt-5.2");
   const { toast } = useToast();
   const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean | null>(null);
   const [hasAnthropicKey, setHasAnthropicKey] = useState<boolean | null>(null);
@@ -44,7 +44,7 @@ export default function Home() {
   const PENDING_PARAMS_KEY = "huggable_pending_start_params";
   const PENDING_NAME_KEY = "huggable_pending_project_name";
   const allowedModels = new Set([
-    "gpt-4.1",
+    "gpt-5.2",
     "claude-sonnet-4.6",
     "claude-haiku-4.5",
     "claude-opus-4.6",
@@ -66,7 +66,7 @@ export default function Home() {
   const ensureModelKeyPresent = () => {
     const hasAnthropicCreds = hasAnthropicKey || hasClaudeOAuth;
     const keyChecks = {
-      "gpt-4.1": { hasKey: hasOpenAIKey, provider: "OpenAI" },
+      "gpt-5.2": { hasKey: hasOpenAIKey, provider: "OpenAI" },
       "claude-sonnet-4.6": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
       "claude-haiku-4.5": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
       "claude-opus-4.6": { hasKey: hasAnthropicCreds, provider: "Anthropic" },
@@ -375,7 +375,7 @@ export default function Home() {
                       onChange={(e) =>
                         setModel(
                           e.target.value as
-                            | "gpt-4.1"
+                            | "gpt-5.2"
                             | "claude-sonnet-4.6"
                             | "claude-haiku-4.5"
                             | "claude-opus-4.6"
@@ -385,7 +385,7 @@ export default function Home() {
                       }
                       title="Select model"
                     >
-                      <option value="gpt-4.1">GPT-4.1</option>
+                      <option value="gpt-5.2">GPT-5.2</option>
                       <option value="claude-sonnet-4.6">
                         Claude Sonnet 4.6
                       </option>

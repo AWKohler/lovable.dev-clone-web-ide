@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const platform = (url.searchParams.get('platform') === 'mobile' ? 'mobile' : 'web') as 'web' | 'mobile';
   const modelParam = url.searchParams.get('model');
   const model = (
+    modelParam === 'gpt-5.2' ? 'gpt-5.2' :
+    modelParam === 'gpt-4.1' ? 'gpt-5.2' : // migrate legacy
     modelParam === 'claude-sonnet-4.6' ? 'claude-sonnet-4.6' :
     modelParam === 'claude-sonnet-4.5' ? 'claude-sonnet-4.6' : // migrate legacy
     modelParam === 'claude-haiku-4.5' ? 'claude-haiku-4.5' :
@@ -20,8 +22,8 @@ export async function GET(request: Request) {
     modelParam === 'claude-opus-4.5' ? 'claude-opus-4.6' : // migrate legacy
     modelParam === 'kimi-k2-thinking-turbo' ? 'kimi-k2-thinking-turbo' :
     modelParam === 'fireworks-minimax-m2p5' ? 'fireworks-minimax-m2p5' :
-    'gpt-4.1'
-  ) as 'gpt-4.1' | 'claude-sonnet-4.6' | 'claude-haiku-4.5' | 'claude-opus-4.6' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5';
+    'gpt-5.2'
+  ) as 'gpt-5.2' | 'claude-sonnet-4.6' | 'claude-haiku-4.5' | 'claude-opus-4.6' | 'kimi-k2-thinking-turbo' | 'fireworks-minimax-m2p5';
 
   if (!userId) {
     return redirectToSignIn({ returnBackUrl: request.url });

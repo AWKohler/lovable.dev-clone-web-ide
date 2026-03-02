@@ -80,6 +80,7 @@ export function Workspace({
   const [isInstalling, setIsInstalling] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
+  const [isAgentBusy, setIsAgentBusy] = useState(false);
   const [hydrating, setHydrating] = useState(true);
   const [initializationComplete, setInitializationComplete] = useState(false);
   const [expUrl, setExpUrl] = useState<string | null>(null);
@@ -1072,6 +1073,22 @@ export default function RootLayout() {
     };
   }, [projectId]);
 
+  // Listen for agent busy state changes (for preview loading carousel)
+  useEffect(() => {
+    const onBusyChange = (e: Event) => {
+      const busy = (e as CustomEvent).detail?.isBusy as boolean;
+      setIsAgentBusy(busy);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("agent-busy-change", onBusyChange as EventListener);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("agent-busy-change", onBusyChange as EventListener);
+      }
+    };
+  }, []);
+
   // React to preview refresh requests from tools
   useEffect(() => {
     const onRefresh = () => setPreviewReloadKey((k) => k + 1);
@@ -1751,6 +1768,7 @@ export default function RootLayout() {
               platform={platform}
               expUrl={expUrl}
               htmlSnapshotUrl={htmlSnapshotUrl}
+              isAgentWorking={isAgentBusy}
             />
           </div>
         </div>

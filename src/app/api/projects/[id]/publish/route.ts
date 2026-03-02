@@ -230,27 +230,31 @@ export async function POST(
       );
     }
 
-    // Step 5: Attach custom domain (idempotent — 409 means already attached)
-    const customDomain = `${projectName}.botflow-site.app`;
-    try {
-      const domainRes = await cfFetch(
-        `/accounts/${cf.accountId}/pages/projects/${projectName}/domains`,
-        cf.apiToken,
-        { body: { name: customDomain } }
-      );
-      // 409 = domain already attached, that's fine
-      if (!domainRes.success) {
-        const is409 = domainRes.errors?.some(e => e.code === 8000040 || e.message?.includes('already'));
-        if (!is409) {
-          console.warn('Failed to attach custom domain:', domainRes.errors);
-        }
-      }
-    } catch (err) {
-      // Non-fatal — the .pages.dev URL still works
-      console.warn('Custom domain attachment error:', err);
-    }
+    // Step 5: Optionally attach branded custom domain
+    const brandedDomain = process.env.CLOUDFLARE_BRANDED_DOMAIN; // e.g. "botflow-site.app"
+    let deploymentUrl = `https://${projectName}.pages.dev`;
 
-    const deploymentUrl = `https://${customDomain}`;
+    if (brandedDomain) {
+      const customDomain = `${projectName}.${brandedDomain}`;
+      try {
+        const domainRes = await cfFetch(
+          `/accounts/${cf.accountId}/pages/projects/${projectName}/domains`,
+          cf.apiToken,
+          { body: { name: customDomain } }
+        );
+        // 409 = domain already attached, that's fine
+        if (!domainRes.success) {
+          const is409 = domainRes.errors?.some(e => e.code === 8000040 || e.message?.includes('already'));
+          if (!is409) {
+            console.warn('Failed to attach custom domain:', domainRes.errors);
+          }
+        }
+        deploymentUrl = `https://${customDomain}`;
+      } catch (err) {
+        // Non-fatal — fall back to .pages.dev URL
+        console.warn('Custom domain attachment error:', err);
+      }
+    }
 
     // Update DB
     const db = getDb();
